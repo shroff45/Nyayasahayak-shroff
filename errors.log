@@ -1,0 +1,14 @@
+src/modules/judge/features/CaseTriage.tsx(1,27): error TS6133: 'useEffect' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(3,22): error TS6133: 'AlertTriangle' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(3,37): error TS6133: 'CheckCircle' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(3,74): error TS6133: 'Clock' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(7,32): error TS6133: 'caseData' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(7,47): error TS6133: 'lang' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(18,7): error TS6133: 'piiService' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(19,12): error TS6133: 'data' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(20,25): error TS6133: 'pii' is declared but its value is never read.
+src/modules/judge/features/CaseTriage.tsx(26,7): error TS6133: 'Modal' is declared but its value is never read.
+src/modules/judge/JudgeDashboard.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/modules/judge/JudgeDashboard.tsx(41,19): error TS6133: 'setCases' is declared but its value is never read.
+src/shared/components/DecisionStream.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/shared/components/VisualEvidencePanel.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
