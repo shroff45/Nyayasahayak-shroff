@@ -72,6 +72,11 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
         await signIn(page, /Citizen Access/, /\/citizen\/home$/, { 'your.email@gmail.com': 'e2e@example.com' });
         await page.goto('/citizen/file');
 
+        // CI's first run of this act timed out here, and it was the test being wrong rather than the
+        // app: the intake opens in voice mode (`inputMode` defaults to 'voice'), so the text box is
+        // behind a toggle. Pressing it is not scaffolding - for a citizen who can type but not speak,
+        // it is the first action the screen asks for.
+        await page.getByRole('button', { name: 'Type' }).click();
         await page.locator('#complaint-text').fill(COMPLAINT);
         await page.getByRole('button', { name: 'Read my text' }).click();
 
@@ -117,6 +122,10 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
         // The exhibit is in the locker's own list, and it carries a re-verification affordance, which
         // only renders for a row the journal actually holds.
         await expect(page.getByText('scene-photo.png').first()).toBeVisible();
+        // The re-verification affordance lives in the card's expanded detail, and the card opens on
+        // click. It is a <div onClick>, not a button, which is its own accessibility defect (D22 in
+        // the register) - so this clicks the text instead of a role, and says why out loud.
+        await page.getByText('scene-photo.png').first().click();
         await expect(page.getByRole('button', { name: /Re-verify against the anchor/ })).toBeVisible();
     });
 
