@@ -65,19 +65,59 @@ async function signOut(page: Page) {
     await page.evaluate(() => window.localStorage.removeItem('nyaya_pilot_user'));
 }
 
+/**
+ * A blind-authored selector should cost one log line, not one 8-minute CI round trip per guess.
+ *
+ * The first run of this journey failed on `#complaint-text`, and the report said only "waiting for
+ * locator". A crashed React tree and a wrong selector look identical when the only evidence is a
+ * timeout on a page with an empty body - so the failure prints the URL, anything the page threw, and
+ * the text the citizen would actually have seen. Keep it even after the journey goes green: the day a
+ * product change breaks this chain, that block is the difference between a five-minute diagnosis and an
+ * afternoon of theories.
+ */
+const pageProblems: string[] = [];
+
+test.beforeEach(async ({ page }) => {
+    pageProblems.length = 0;
+    page.on('pageerror', (error) => pageProblems.push(`pageerror: ${error.message}`));
+    page.on('console', (message) => {
+        if (message.type() === 'error') pageProblems.push(`console: ${message.text().slice(0, 200)}`);
+    });
+});
+
+test.afterEach(async ({ page }) => {
+    let body = '';
+    try {
+        body = await page.evaluate(() => document.body?.innerText ?? '');
+    } catch {
+        body = '<no page: the browser context was already closed>';
+    }
+    console.log(
+        `[e2e] url=${page.url()}\n` +
+        `      problems=${pageProblems.length ? pageProblems.slice(0, 4).join(' | ') : 'none'}\n` +
+        `      body=${body.replace(/\s+/g, ' ').slice(0, 700)}`
+    );
+});
+
 test('a complaint reaches the docket, an exhibit reaches the journal, and the digest still matches', async ({ page }) => {
     test.setTimeout(180_000);
 
     await test.step('Act 1 — the citizen files, and the receipt is the journal’s own answer', async () => {
         await signIn(page, /Citizen Access/, /\/citizen\/home$/, { 'your.email@gmail.com': 'e2e@example.com' });
-        await page.goto('/citizen/file');
+        // In-app navigation, not a deep link: `/citizen/file` is what the sidebar's own link points at,
+        // and clicking it proves the citizen can actually reach the form. (Deep links do work here -
+        // `vite preview` answers them with index.html - but a journey that navigates like a user is a
+        // journey that also tests the navigation.)
+        await page.getByText('File Complaint', { exact: true }).first().click();
 
         // CI's first run of this act timed out here, and it was the test being wrong rather than the
         // app: the intake opens in voice mode (`inputMode` defaults to 'voice'), so the text box is
         // behind a toggle. Pressing it is not scaffolding - for a citizen who can type but not speak,
         // it is the first action the screen asks for.
         await page.getByRole('button', { name: 'Type' }).click();
-        await page.locator('#complaint-text').fill(COMPLAINT);
+        const textarea = page.locator('#complaint-text');
+        await expect(textarea, 'the text mode of the intake must be reachable').toBeVisible({ timeout: 15_000 });
+        await textarea.fill(COMPLAINT);
         await page.getByRole('button', { name: 'Read my text' }).click();
 
         // The heading is the claim under test: it used to read "Review AI-Extracted Details".
@@ -107,7 +147,7 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
             'Saket PS, Delhi': 'Central Market PS, Coimbatore',
             '••••••••': 'e2e-not-a-real-login',
         });
-        await page.goto('/police/evidence');
+        await page.getByText('Evidence Locker', { exact: true }).first().click();
 
         // The proof of D20, in one line: the case the citizen filed is an option the officer can pick.
         const picker = page.locator('label', { hasText: 'This exhibit belongs to' }).locator('select');
