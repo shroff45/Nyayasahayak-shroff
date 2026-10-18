@@ -134,22 +134,24 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
 
     await test.step('Act 1 — the citizen files, and the receipt is the journal’s own answer', async () => {
         await signIn(page, /Citizen Access/, /\/citizen\/home$/, { 'your.email@gmail.com': 'e2e@example.com' });
-        // Deep link, not a sidebar click - and CI earned that decision. `getByText('File Complaint')`
-        // resolved to `<span class="font-medium">File Complaint</span>` and then timed out on
-        // "element is not visible" for 205 retries: `CitizenLayout` renders its nav twice (`:109` the
-        // drawer, `:138` the mobile bar), so the first text match is a node that only becomes visible at
-        // another width. Clicking a hidden duplicate proves nothing about navigation and everything about
-        // my selector, so the journey goes to the URL and the screen itself asserts it arrived.
+        // Deep link, deliberately, and it earned the right. Two things hid here. `getByText("File
+        // Complaint")` timed out on a node that is real but invisible - `CitizenLayout` renders its nav
+        // twice (`:109` and `:138`), so the first text match was a drawer entry hidden at 1440 px. And
+        // `goto("/citizen/file")` arrived at `/citizen/home`: `App` chose the public route tree before the
+        // session restore finished, that tree's `path="*"` rewrote the address to `/`, and the landing page
+        // bounced the now-authenticated visitor to their role home. That is D25, fixed in `App.tsx` and
+        // pinned by harness claim 27 - so this `goto` is not a shortcut: it is the product's regression
+        // test for deep links, executed in a browser on a real URL.
         await page.goto('/citizen/file');
 
         // CI's first run of this act timed out here, and it was the test being wrong rather than the
         // app: the intake opens in voice mode (`inputMode` defaults to 'voice'), so the text box is
         // behind a toggle. Pressing it is not scaffolding - for a citizen who can type but not speak,
         // it is the first action the screen asks for.
-        // Match these controls on their text content, not on a computed accessible name: CI's run of
-        // `getByRole('button', { name: 'Type' })` found nothing while `t('complaint_type')` resolves to
-        // \"Type\" in node, which means either the name computation or the page disagrees with me. Text
-        // content is the narrower claim, and the assertion below says which page I actually got.
+        // Matched on text content rather than a computed accessible name: the narrower claim survives
+        // whatever an inline icon does to name computation. And the assertion under it now answers the
+        // question that cost two cycles - getByRole("button, name Type") reported "element(s) not
+        // found" not because the label was wrong but because the page was `CitizenHome`. See D25 below.
         const modeToggle = page.locator('button').filter({ hasText: /^Type$/ });
         await expect(
             page.locator('button').filter({ hasText: /^(Voice|Type)$/ }).first(),

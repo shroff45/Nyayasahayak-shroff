@@ -333,7 +333,7 @@ const NyayaChitraWrapper: React.FC = () => {
 
 // ================== APP COMPONENT ==================
 const App: React.FC = () => {
-    const { user, isAuthenticated } = useAuth();
+    const { user, isAuthenticated, isLoading } = useAuth();
 
     // Open the ledger on mount: loads (or creates) this device's signing key and reads back
     // the anchored journal from storage. A failure here is reported rather than swallowed -
@@ -357,6 +357,20 @@ const App: React.FC = () => {
             root.classList.remove('dark');
         }
     }, []);
+
+    // A cold boot must not route. The session is restored from localStorage in an effect, so the very
+    // first render reports `isAuthenticated === false` even when a signed-in visitor asked for
+    // /citizen/file. The public tree used to mount anyway, its catch-all (`path="*"`) rewrote the URL to
+    // `/`, and by then the restore had landed - so the landing page's own `/` route sent the visitor to
+    // their role home. Every bookmarked or shared deep link (an SMS with a case URL, an officer's saved
+    // Evidence Locker tab, a judge reopening a verifier) therefore lost its target and opened a
+    // dashboard. Holding one frame until the restore settles keeps the address the person typed.
+    //
+    // `isLoading` is set false unconditionally at the end of that effect (`AuthContext.tsx:86`), including
+    // when there is no session to restore, so this cannot strand a visitor on the spinner.
+    if (isLoading) {
+        return <LoadingFallback />;
+    }
 
     // If authenticated - use role-based routing
     if (isAuthenticated && user) {

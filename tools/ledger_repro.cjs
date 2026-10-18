@@ -695,6 +695,33 @@ const main = async () => {
     );
 
 
+    // D25. `App` used to pick between the authenticated and public route trees on `isAuthenticated`
+    // alone, and the session arrives one effect later. So the public tree won the first paint, its
+    // `<Route path="*">` rewrote the URL to `/`, and the landing page's `/` route then bounced the now
+    // authenticated visitor to their role home. A bookmark, an SMS link or a reopened tab lost its
+    // target - which is what the Playwright journey tripped over, three times, before this claim
+    // existed. Pinning the order of two statements is unfashionable; pinning it is also the only way a
+    // "cleanup" of `if (isLoading) return ...` fails a build instead of silently degrading every
+    // deep link in the product, and the browser test that would catch it needs a Chromium download.
+    const boot = read('src/App.tsx');
+    const holdAt = boot.indexOf('if (isLoading)');
+    const treeAt = boot.indexOf('if (isAuthenticated && user)');
+    const readsFlag = boot.includes('const { user, isAuthenticated, isLoading } = useAuth();');
+    const rewrites = (boot.match(/<Route path="\*" element=\{<Navigate to="\/"/g) || []).length;
+    check(
+        'A cold boot holds the first paint instead of routing, so a deep link survives it',
+        holdAt !== -1 && treeAt !== -1 && holdAt < treeAt && readsFlag && rewrites === 2,
+        !readsFlag
+            ? '`App` does not read `isLoading` from `useAuth()` at all.'
+            : holdAt === -1
+                ? 'the `if (isLoading)` hold is gone, so the public tree mounts before the session is '
+                  + 'restored and every persona deep link is rewritten to a role home.'
+                : treeAt !== -1 && holdAt > treeAt
+                    ? 'the hold sits after the tree choice, which is the same as not having it.'
+                    : `expected the public and authenticated trees to keep their catch-alls (found ${rewrites}), `
+                      + 'because the trees are the reason the order matters at all'
+    );
+
     // -----------------------------------------------------------------------
     // G. the language-model path. The AI service used to `throw` at module scope when
     // VITE_API_KEY was absent - and the committed .env carried a placeholder, so every clone on

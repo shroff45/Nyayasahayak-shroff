@@ -70,7 +70,7 @@ const AboutStats: React.FC<AboutStatsProps> = ({ t: _t }) => {
         {
             id: 'claims',
             icon: <BookOpen className="w-6 h-6" aria-hidden="true" />,
-            value: 26,
+            value: 27,
             suffix: '',
             label: 'Claims the repo checks about itself',
             how: 'node tools/ledger_repro.cjs - it mounts the real screens, reads the real ledger, and fails when a sentence in this app stops matching its code.',
