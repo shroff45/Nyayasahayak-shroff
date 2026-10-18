@@ -382,7 +382,6 @@ const CitizenComplaint: React.FC = () => {
                             </label>
                             <textarea
                                 id="complaint-text"
-                                aria-labelledby="complaint-text-label"
                                 value={textInput}
                                 onChange={(e) => setTextInput(e.target.value)}
                                 rows={8}

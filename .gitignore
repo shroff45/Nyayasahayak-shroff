@@ -127,3 +127,10 @@ build_log*.txt
 tsc_*.txt
 *.log
 node_modules
+
+# Playwright outputs
+# The reports and traces are per-run artefacts; committing them would put a
+# browser's screenshots in the repository next to the code that produced them.
+test-results/
+playwright-report/
+blob-report/

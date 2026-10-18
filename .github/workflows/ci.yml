@@ -46,3 +46,13 @@ jobs:
       # claims to serve; failing on >600 kB keeps that from drifting unnoticed.
       - name: Enforce bundle-size budget
         run: node tools/check_bundle_size.mjs /tmp/build.log
+
+      # The chained journey (citizen intake -> officer's locker -> judge's re-verification). It drives
+      # `vite preview` on the build the two steps above just produced and passed, so what CI clicks is
+      # what a courthouse browser would load. Only chromium is installed: one engine, because a
+      # cross-browser matrix would be a support promise this app has not made.
+      - name: Install the Chromium build Playwright expects
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end journey must pass
+        run: npx playwright test
