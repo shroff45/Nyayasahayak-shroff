@@ -634,6 +634,59 @@ const main = async () => {
         ['src/personas/police/pages/EvidenceLocker.tsx', ['mockDelay', "from '../../../shared/utils/mockApi'"]],
         ['src/personas/police/components/Section63CertificateGenerator.tsx', ['(PDF)', 'mockDelay']],
     ].flatMap(([file, needles]) => needles.filter((needle) => read(file).includes(needle)));
+    // D20. Two different lies lived in one file: the intake printed a CNR that `Math.random()` had
+    // invented, and it promised the complaint was "recorded in this device's evidence ledger" while the
+    // only writer of `kind:'CASE'` rows was never called - so the locker, the charge-sheet gate and the
+    // judge's custody page (three live readers of `listCases`) could not see a filing at all. This claim
+    // pins the wiring and the receipt copy together, because a receipt that is accurate about a row that
+    // does not exist is still a fabrication.
+    const intake = read('src/personas/citizen/pages/CitizenComplaint.tsx');
+    const intakeRequired = [
+        'addBlock(',
+        'incidentDate: extractedData.incidentDate',
+        'filingDate: new Date().toISOString()',
+        'isZeroFir,',
+        'Journal Record #',
+        'Integrity Digest',
+        'Saved to this device',
+        'Session only',
+        'Recorded on this device; nothing was sent to a police station or court.',
+    ];
+    const intakeForbidden = [
+        // EVIDENCE rows are invisible to listCases forever, so the wrong writer is a failure mode, not
+        // a style choice. `setTimeout` and the arithmetic CNR are the theatre that used to stand in for
+        // the write. The two invented names are what turned a mock into a journal entry.
+        'appendEvidenceRecord',
+        'setTimeout',
+        '/2024/DL/',
+        'Math.random() * 1000',
+        "complainant: 'Citizen User'",
+        "respondent: 'To be identified'",
+        'AI Process',
+        'AI Analyzing',
+    ];
+    const citizenCopy = read('src/features/citizen/constants/citizenTranslations.ts');
+    const intakeMissing = intakeRequired.filter((needle) => !intake.includes(needle));
+    const intakePresent = intakeForbidden.filter((needle) => intake.includes(needle));
+    const intakeLie = ['AI-Extracted', 'AI-\u0928िष्कर्षित'].filter((needle) => citizenCopy.includes(needle));
+    check(
+        'The one live citizen intake writes the journal row its receipt describes',
+        intakeMissing.length === 0 && intakePresent.length === 0 && intakeLie.length === 0,
+        (intakeMissing.length ? `missing from the intake: ${intakeMissing.join(', ')}. ` : '')
+            + (intakePresent.length ? `still present in the intake: ${intakePresent.join(', ')}. ` : '')
+            + (intakeLie.length ? `the review heading still claims: ${intakeLie.join(', ')}. ` : '')
+            + 'CitizenComplaint files through `addBlock` - the only writer of `kind:\'CASE\'`, which is what '
+              + '`listCases` can read - with `id`, both names as typed, `sectionsInvoked`, `incidentDate` '
+              + 'carried explicitly (omitting it lets `readCase` fall back to `filingDate`, which moves '
+              + 'pre-01-07-2024 conduct across the BNS commencement line and flips the s.176(3) interlock: '
+              + 'tests/citizen_intake_ledger.test.ts proves both halves), `filingDate`, `isZeroFir`, and a '
+              + 'CNR only if the citizen typed one. The receipt then prints what the ledger answered - index, '
+              + 'digest, whether it persisted, whether it is anchored - and says plainly that nothing reached '
+              + 'a police station or a court. `applicableLaw` is deliberately not stored: the date decides '
+              + 'the code at read time, and writing the conclusion into a field named "as recorded" is the '
+              + 'substitution D18 removed, wearing a data-model costume.'
+    );
+
     check(
         'No certificate waits on a timer, and no button promises a format this app cannot produce',
         theatre.length === 0,
@@ -641,6 +694,33 @@ const main = async () => {
             : 'The wizard\'s "Download Part A (PDF)" had no handler and there is no PDF writer in the tree; it now downloads the text the s.63 Schedule can actually be read from, and the certificate\'s own digest is anchored so the download can be checked against the journal. The locker\'s verify/certificate buttons used to sleep for a second and then claim success.'
     );
 
+
+    // D25. `App` used to pick between the authenticated and public route trees on `isAuthenticated`
+    // alone, and the session arrives one effect later. So the public tree won the first paint, its
+    // `<Route path="*">` rewrote the URL to `/`, and the landing page's `/` route then bounced the now
+    // authenticated visitor to their role home. A bookmark, an SMS link or a reopened tab lost its
+    // target - which is what the Playwright journey tripped over, three times, before this claim
+    // existed. Pinning the order of two statements is unfashionable; pinning it is also the only way a
+    // "cleanup" of `if (isLoading) return ...` fails a build instead of silently degrading every
+    // deep link in the product, and the browser test that would catch it needs a Chromium download.
+    const boot = read('src/App.tsx');
+    const holdAt = boot.indexOf('if (isLoading)');
+    const treeAt = boot.indexOf('if (isAuthenticated && user)');
+    const readsFlag = boot.includes('const { user, isAuthenticated, isLoading } = useAuth();');
+    const rewrites = (boot.match(/<Route path="\*" element=\{<Navigate to="\/"/g) || []).length;
+    check(
+        'A cold boot holds the first paint instead of routing, so a deep link survives it',
+        holdAt !== -1 && treeAt !== -1 && holdAt < treeAt && readsFlag && rewrites === 2,
+        !readsFlag
+            ? '`App` does not read `isLoading` from `useAuth()` at all.'
+            : holdAt === -1
+                ? 'the `if (isLoading)` hold is gone, so the public tree mounts before the session is '
+                  + 'restored and every persona deep link is rewritten to a role home.'
+                : treeAt !== -1 && holdAt > treeAt
+                    ? 'the hold sits after the tree choice, which is the same as not having it.'
+                    : `expected the public and authenticated trees to keep their catch-alls (found ${rewrites}), `
+                      + 'because the trees are the reason the order matters at all'
+    );
 
     // -----------------------------------------------------------------------
     // G. the language-model path. The AI service used to `throw` at module scope when

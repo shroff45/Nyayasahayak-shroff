@@ -85,7 +85,7 @@ const citizenEn = {
     complaint_describe_your_complaint: 'Describe Your Complaint',
     complaint_filed_successfully: 'Complaint Filed Successfully!',
     complaint_file_another: 'File Another Complaint',
-    complaint_review_extracted: 'Review AI-Extracted Details',
+    complaint_review_extracted: 'Review what the four rules found',
     complaint_submitting: 'Submitting...',
     complaint_submit_blockchain: 'Save to Ledger',
 
@@ -208,7 +208,7 @@ const citizenHi: PartialTranslation = {
     complaint_describe_your_complaint: 'अपनी शिकायत का वर्णन करें',
     complaint_filed_successfully: 'शिकायत सफलतापूर्वक दर्ज!',
     complaint_file_another: 'एक और शिकायत दर्ज करें',
-    complaint_review_extracted: 'AI-निष्कर्षित विवरण की समीक्षा करें',
+    complaint_review_extracted: 'चार नियमों ने जो खोजा, उसे देखें',
     complaint_submitting: 'जमा हो रहा है...',
     complaint_submit_blockchain: 'लेजर में सहेजें',
     // Track Case Page - Hindi

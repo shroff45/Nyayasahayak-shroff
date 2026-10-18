@@ -3,18 +3,27 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    Mic, MicOff, FileText, Upload, Loader2, CheckCircle, AlertTriangle, Globe, Calendar, MapPin, Keyboard, Volume2, Sparkles } from 'lucide-react';
+    Mic, MicOff, FileText, Upload, Loader2, CheckCircle, AlertTriangle, Globe, Calendar, MapPin, Keyboard, Volume2, Scan } from 'lucide-react';
 import ParticleHeader from '../../../shared/components/3d/ParticleHeader';
 import GlassCard from '../../../shared/components/3d/GlassCard';
 import Waveform3D from '../../../shared/components/3d/Waveform3D';
-import ProcessingOrb from '../../../shared/components/3d/ProcessingOrb';
 import { useCitizenTranslation } from '../../../features/citizen/hooks/useCitizenTranslation';
+// The façade, not the trust layer: `addBlock` is the only writer of `kind:'CASE'` records, and
+// `listCases` - which three live persona screens read - can only see rows written that way. Filing
+// through `appendEvidenceRecord` instead would put the complaint in the journal as an exhibit and make
+// it invisible to the police and judge screens forever.
+import { addBlock } from '../../../services/akhandLedger';
 
 type Language = 'en' | 'hi' | 'gu' | 'ta' | 'te';
 
+/**
+     * What the local rules can actually derive from the narrative. Names are deliberately absent:
+     * a complainant and a respondent are typed by the person filing, and until this commit the page
+     * wrote `complainant: 'Citizen User'` and `respondent: 'To be identified'` into the journal -
+     * values the rules invented, displayed to an officer as case data. That is the same substitution
+     * D18 removed from the hashing screen, only downstream.
+     */
 interface ExtractedData {
-    complainant: string;
-    respondent: string;
     summary: string;
     caseType: string;
     urgency: 'HIGH' | 'MEDIUM' | 'LOW';
@@ -38,12 +47,18 @@ const CitizenComplaint: React.FC = () => {
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
     const [textInput, setTextInput] = useState('');
-    const [isProcessing, setIsProcessing] = useState(false);
     const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
     const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
     const [incidentDate, setIncidentDate] = useState(new Date().toISOString().split('T')[0]);
     const [isZeroFir, setIsZeroFir] = useState(false);
-    const [cnr, setCnr] = useState('');
+    const [complainant, setComplainant] = useState('');
+    const [respondent, setRespondent] = useState('');
+    // Typed, never generated: a CNR is a number a police station assigns. This build cannot know one.
+    const [cnrInput, setCnrInput] = useState('');
+    /** What the journal answered. The receipt is this, not a promise. */
+    const [receipt, setReceipt] = useState<{
+        index: number; leafDigest: string; persisted: boolean; anchored: boolean;
+    } | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const recognitionRef = useRef<any>(null);
@@ -105,11 +120,12 @@ const CitizenComplaint: React.FC = () => {
         }
     };
 
-    const processInput = async (text: string) => {
-        setIsProcessing(true);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Mock extraction
+    /**
+     * The four rules below are the whole "extraction". It used to `await setTimeout(2000)` first and
+     * show an orb labelled "AI Analyzing...", which described a request that was never made - and the
+     * `isProcessing` flag existed only to keep the spinner company. Now it runs when you press it.
+     */
+    const processInput = (text: string) => {
         const urgency: ExtractedData['urgency'] =
             /urgent|emergency|immediate|serious|critical|murder|attack/i.test(text) ? 'HIGH' :
                 /important|priority/i.test(text) ? 'MEDIUM' : 'LOW';
@@ -125,8 +141,6 @@ const CitizenComplaint: React.FC = () => {
                 /divorce|custody|marriage/i.test(text) ? 'Family' : 'General';
 
         setExtractedData({
-            complainant: 'Citizen User',
-            respondent: 'To be identified',
             summary: text.substring(0, 200) + (text.length > 200 ? '...' : ''),
             caseType,
             urgency,
@@ -134,17 +148,57 @@ const CitizenComplaint: React.FC = () => {
             incidentDate,
             isZeroFir
         });
-        setIsProcessing(false);
     };
 
     const handleSubmit = async () => {
         if (!extractedData) return;
+        if (!complainant.trim()) {
+            // The row is read by three other screens. Filing it with nobody's name on it is how a
+            // journal becomes decoration.
+            setError('Add your name first - the ledger records what you type, and an officer opening this row has to be able to see whose complaint it is.');
+            setSubmissionStatus('error');
+            return;
+        }
         setSubmissionStatus('submitting');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        const cnrNumber = `${isZeroFir ? '0' : Math.floor(Math.random() * 1000)}/2024/DL/${Date.now().toString().slice(-4)}`;
-        setCnr(cnrNumber);
-        setSubmissionStatus('success');
+        setError(null);
+        try {
+            // The id is a lookup key inside this journal, not an authenticity claim - the integrity
+            // assertion is the digest `addBlock` computes over the row. `crypto.randomUUID` exists only
+            // in secure contexts, and a demo served over plain HTTP on a LAN still has to be able to
+            // file, hence the fallback.
+            const id = `CASE-${globalThis.crypto?.randomUUID?.()
+                ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`}`;
+            const written = await addBlock({
+                id,
+                complainant: complainant.trim(),
+                respondent: respondent.trim(),
+                caseType: extractedData.caseType,
+                summary: extractedData.summary,
+                sectionsInvoked: extractedData.sections,
+                // Never omitted. `readCase` falls back to `filingDate` when this key is missing, and a
+                // filing date of today turns a 2023 incident into post-commencement conduct - which
+                // flips forensicInterlock.ts's BNS/IPC guard and therefore the s.176(3) interlock.
+                incidentDate: extractedData.incidentDate,
+                filingDate: new Date().toISOString(),
+                isZeroFir,
+                // `applicableLaw` is deliberately absent: the code is derived from the date at read
+                // time, and storing 'BNS' here because the date implies it would be the substitution
+                // again, wearing a field name that says "as recorded".
+                ...(cnrInput.trim() ? { cnrNumber: cnrInput.trim() } : {}),
+            });
+            setReceipt({
+                index: written.index,
+                leafDigest: written.leafDigest,
+                persisted: written.persisted,
+                anchored: written.anchored,
+            });
+            setSubmissionStatus('success');
+        } catch (err) {
+            // The ledger throws rather than half-writing: no localStorage, or a quota that refused the
+            // write. Either way there is no record, so the success screen must not appear.
+            setError(err instanceof Error ? err.message : String(err));
+            setSubmissionStatus('error');
+        }
     };
 
     const resetForm = () => {
@@ -152,7 +206,9 @@ const CitizenComplaint: React.FC = () => {
         setTextInput('');
         setExtractedData(null);
         setSubmissionStatus('idle');
-        setCnr('');
+        setCnrInput('');
+        setReceipt(null);
+        setError(null);
     };
 
     const speechSupported = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
@@ -260,14 +316,6 @@ const CitizenComplaint: React.FC = () => {
                                     <p className="text-amber-400 mb-2">Speech recognition not supported</p>
                                     <p className="text-sm text-slate-500">Please use Chrome/Edge or switch to text input</p>
                                 </div>
-                            ) : isProcessing ? (
-                                /* AI Processing State */
-                                <div className="text-center py-8">
-                                    <ProcessingOrb isProcessing={true} size="lg" label="AI Analyzing..." />
-                                    <p className="text-slate-400 mt-4 text-sm">
-                                        Extracting case details, identifying sections...
-                                    </p>
-                                </div>
                             ) : (
                                 <>
                                     {/* 3D Microphone Button */}
@@ -315,7 +363,7 @@ const CitizenComplaint: React.FC = () => {
                             )}
 
                             {/* Live Transcript */}
-                            {transcript && !isProcessing && (
+                            {transcript && (
                                 <div className="w-full mt-6 p-4 bg-slate-900/50 border border-slate-700/50 rounded-xl">
                                     <p className="text-xs text-emerald-400 font-bold mb-2">📝 {t('complaint_transcript')}</p>
                                     <p className="text-sm text-slate-300">{transcript}</p>
@@ -325,11 +373,15 @@ const CitizenComplaint: React.FC = () => {
                     ) : (
                         /* Text Input Mode */
                         <div>
-                            <label className="flex items-center gap-2 text-sm font-bold text-slate-300 mb-3">
+                            <label
+                                htmlFor="complaint-text"
+                                className="flex items-center gap-2 text-sm font-bold text-slate-300 mb-3"
+                            >
                                 <FileText className="w-4 h-4" />
                                 {t('complaint_describe_your_complaint')}
                             </label>
                             <textarea
+                                id="complaint-text"
                                 value={textInput}
                                 onChange={(e) => setTextInput(e.target.value)}
                                 rows={8}
@@ -343,20 +395,11 @@ const CitizenComplaint: React.FC = () => {
                                 </p>
                                 <button
                                     onClick={handleTextSubmit}
-                                    disabled={textInput.length < 20 || isProcessing}
+                                    disabled={textInput.length < 20}
                                     className="px-6 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500 shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2"
                                 >
-                                    {isProcessing ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                            Processing...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkles className="w-4 h-4" />
-                                            AI Process
-                                        </>
-                                    )}
+                                    <Scan className="w-4 h-4" />
+                                    Read my text
                                 </button>
                             </div>
                         </div>
@@ -371,11 +414,47 @@ const CitizenComplaint: React.FC = () => {
                     <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 mb-2">
                         {t('complaint_filed_successfully')}
                     </h2>
+                    {receipt && (
+                        <dl className="text-left max-w-md mx-auto mb-5 bg-slate-900/40 border border-slate-700/50 rounded-xl p-4 space-y-2">
+                            <div className="flex items-baseline justify-between gap-4">
+                                <dt className="text-xs uppercase tracking-wider text-slate-500 font-bold">Journal Record #</dt>
+                                <dd className="font-mono text-white">{receipt.index}</dd>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-4">
+                                <dt className="text-xs uppercase tracking-wider text-slate-500 font-bold">Integrity Digest</dt>
+                                <dd className="font-mono text-cyan-300 text-sm break-all" title="The first 16 characters of the SHA-256 digest the ledger computed over this row">{receipt.leafDigest.slice(0, 16)}…</dd>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-4">
+                                <dt className="text-xs uppercase tracking-wider text-slate-500 font-bold">Storage</dt>
+                                {/* The façade refuses to run without localStorage, so today `persisted` is
+                                    only false if a driver is changed underneath it - which is what the
+                                    IndexedDB block (D6) does. The branch is there so the day that lands,
+                                    this page tells the truth about it without an edit. */}
+                                <dd className={`text-sm font-semibold ${receipt.persisted ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                    {receipt.persisted ? 'Saved to this device' : 'Session only — will not survive page reload'}
+                                </dd>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-4">
+                                <dt className="text-xs uppercase tracking-wider text-slate-500 font-bold">Anchored</dt>
+                                <dd className="text-sm text-slate-300">
+                                    {receipt.anchored
+                                        ? 'Yes — this device signed the batch it fell into'
+                                        : 'Not yet — the next anchor covers it'}
+                                </dd>
+                            </div>
+                        </dl>
+                    )}
                     <p className="text-emerald-400 font-mono text-lg bg-emerald-500/10 inline-block px-4 py-2 rounded-lg mb-4 border border-emerald-500/30">
-                        CNR: {cnr}
+                        CNR: {cnrInput.trim() || 'No CNR assigned (Zero-FIR)'}
                     </p>
-                    <p className="text-slate-400 text-sm mb-6">
-                        🔗 Your complaint is recorded in this device's evidence ledger and hashed. Nothing has been sent to a court, and there is no SMS or email update - this build has no server to send one from.
+                    <p className="text-slate-400 text-sm mb-2">
+                        Recorded on this device; nothing was sent to a police station or court.
+                    </p>
+                    <p className="text-slate-500 text-xs mb-6">
+                        The officer's Evidence Locker and the court's custody screen read this same journal,
+                        so the case is pickable there - but only while this browser keeps its storage. A
+                        kiosk that clears it loses the record: this build has no server to send it to, and
+                        therefore no SMS or email update either.
                     </p>
                     <button
                         onClick={resetForm}
@@ -392,16 +471,58 @@ const CitizenComplaint: React.FC = () => {
                             <FileText className="w-5 h-5 text-emerald-400" />
                             {t('complaint_review_extracted')}
                         </h3>
+                        <p className="text-xs text-slate-500 mb-4">
+                            What follows is two things you typed and four things four regular expressions
+                            found in your text. No model is involved and nothing has been sent anywhere yet.
+                        </p>
                         <div className="grid md:grid-cols-2 gap-4">
-                            {[
-                                { label: 'Complainant', value: extractedData.complainant, icon: '👤' },
-                                { label: 'Case Type', value: extractedData.caseType, icon: '📋' },
-                            ].map((item, idx) => (
-                                <div key={idx} className="bg-slate-900/30 p-4 rounded-xl border border-slate-700/30">
-                                    <label className="text-xs text-slate-500 uppercase font-bold">{item.icon} {item.label}</label>
-                                    <p className="text-white font-medium mt-1">{item.value}</p>
-                                </div>
-                            ))}
+                            <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-700/30">
+                                <label htmlFor="complainant" className="text-xs text-slate-500 uppercase font-bold">
+                                    👤 Your name (complainant)
+                                </label>
+                                <input
+                                    id="complainant"
+                                    type="text"
+                                    value={complainant}
+                                    onChange={(e) => setComplainant(e.target.value)}
+                                    placeholder="As it should appear in the record"
+                                    className="w-full mt-1 bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:border-emerald-500/50 outline-none"
+                                />
+                            </div>
+                            <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-700/30">
+                                <label htmlFor="respondent" className="text-xs text-slate-500 uppercase font-bold">
+                                    🎯 Against whom (respondent)
+                                </label>
+                                <input
+                                    id="respondent"
+                                    type="text"
+                                    value={respondent}
+                                    onChange={(e) => setRespondent(e.target.value)}
+                                    placeholder="Leave blank if you do not know"
+                                    className="w-full mt-1 bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:border-emerald-500/50 outline-none"
+                                />
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                    Blank stays blank in the record. This build will not write
+                                    "unknown person" on your behalf.
+                                </p>
+                            </div>
+                            <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-700/30">
+                                <label htmlFor="cnr" className="text-xs text-slate-500 uppercase font-bold">
+                                    🔢 CNR number, if you already have one
+                                </label>
+                                <input
+                                    id="cnr"
+                                    type="text"
+                                    value={cnrInput}
+                                    onChange={(e) => setCnrInput(e.target.value)}
+                                    placeholder="From an existing case, e.g. 123/2024"
+                                    className="w-full mt-1 bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:border-emerald-500/50 outline-none font-mono text-sm"
+                                />
+                            </div>
+                            <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-700/30">
+                                <p className="text-xs text-slate-500 uppercase font-bold">📋 Case type</p>
+                                <p className="text-white font-medium mt-1">{extractedData.caseType}</p>
+                            </div>
                             <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-700/30">
                                 <label className="text-xs text-slate-500 uppercase font-bold">⚡ Urgency</label>
                                 <span className={`inline-block px-3 py-1.5 rounded-full text-xs font-bold mt-1 ${extractedData.urgency === 'HIGH' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :

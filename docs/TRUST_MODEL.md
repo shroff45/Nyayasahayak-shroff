@@ -193,7 +193,32 @@ a document is a promise and a grep is not a gate.
 Re-run the proof:
 
 ```bash
-node tools/ledger_repro.cjs          # 25 claims, exit non-zero if any fails
-npm test                             # 49 tests (trust primitives, ledger, custody, the s.63
-                                     # certificate document) + 14 statutory tests
+node tools/ledger_repro.cjs          # 27 claims, exit non-zero if any fails
+npm test                             # 53 tests (trust primitives, ledger, custody, the s.63
+                                     # certificate document, the citizen intake's round trip
+                                     # through the real façade) + 14 statutory tests
+npx playwright test                  # one chained journey in a real browser, against the build
 ```
+
+Each of the three answers a different question, and only the last one asks about a click. The harness
+reads the source and mounts screens in JSDOM: it can prove that `CitizenComplaint.tsx` calls `addBlock`
+and that no reachable file says "court-grade", which is more than a grep, and still less than running
+the app. `npm test` runs the trust layer in node against a localStorage-shaped driver, so the ledger's
+own behaviour - append, anchor, verify, refuse a duplicate index - is executed rather than described.
+`npx playwright test` is the only gate that opens the built bundle in Chromium and follows the chain:
+the citizen types a complaint, presses `Save to Ledger`, an officer's Evidence Locker offers that case
+in its `<select>`, an exhibit uploaded there becomes a ledger record, and the same bytes re-uploaded at
+the judge's verifier return a match. That is the whole trust path, and it is exactly the shape of thing
+D20 got wrong while every grep in the repository stayed green.
+
+Green on `05dbf35`: `2 passed (28.6s)`, all seven CI steps. That run is the first time anything in this
+repository clicked through the whole chain, and it paid for itself immediately — `goto("/citizen/file")`
+had been arriving at `/citizen/home`, because `App` chose its public route tree before the session restore
+finished and that tree's catch-all rewrote the address. Every bookmarked or shared deep link in the product
+lost its target, and a type checker, 53 unit tests and a source-reading harness were all green while that
+was true. It is D25, fixed by holding the first paint on `isLoading` and pinned by harness claim 27.
+
+It needs a browser binary (`npx playwright install --with-deps chromium`, which CI runs) and it drives
+`vite preview` on `npm run build`, so a green journey and a green build describe the same bytes. The
+origin must stay a loopback one: every digest here is `crypto.subtle`, and WebCrypto exists only in a
+secure context.
