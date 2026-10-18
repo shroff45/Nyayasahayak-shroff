@@ -13,8 +13,8 @@ This document exists so you can point at a line and say "do that." Section 13 is
 |---|---|---|
 | 1 | Merge PR #2 (Block 3) | **DONE** — merged at 18:52:02Z, `main` = `3362b322`; this branch synced by merge (`96b30199`), because the two clones have unrelated roots and cannot fast-forward |
 | 2 | Hygiene commit | **DONE in git terms** — `.env`, `dist/`, `node_modules/` untracked (22,993 paths), `.env.example` added, `eslint@^8.57` added as a devDependency so the declared `npm run lint` gate can run. Tracked files: 23,290 → **297** |
-| 2a | Rotate the API key at Google | **BLOCKED ON YOU** — I have no provider credentials and this sandbox reaches only GitHub/npm/PyPI. Until you rotate, the 24-char value is still live and still public |
-| 3 | `git filter-repo` to scrub `.env` from history + force-push `main` | **HELD** — do not want to rewrite shared refs while the secret is still valid (that only removes the *convenience* of finding it, not the exposure). Say the word after 2a and I run exactly: `pip install git-filter-repo` → `git filter-repo --path .env --invert-paths --force` → `git push --force-with-lease origin main` → you re-point any other clone. Then PR #1/#2 refs on GitHub keep the old objects until GitHub's GC, so rotation is the real fix |
+| 2a | Rotate the API key at Google | **NOT NEEDED** — measured after the fact: the committed 24-char value starts `YO` and fails Google's `^AIza[0-9A-Za-z_-]{35}$` shape, i.e. an unfilled placeholder, and only one content version of `.env` has ever existed. Nothing was exposed. If you did paste a real key at some point outside this repo's history, rotate it in AI Studio anyway |
+| 3 | `git filter-repo` + force-push `main` | **RECOMMEND NOT DOING IT** (see D1: the value was a placeholder). Left here in case you want it anyway: `pip install git-filter-repo` → `git filter-repo --path .env --invert-paths --force` → `git push --force-with-lease origin main`. Note GitHub keeps the old objects reachable via PR refs and its own GC, and every other clone of yours must be re-pointed — cost without benefit for a non-secret |
 | 4 | Sequence after D0 | unchanged: 4(e) → 4(a) → IndexedDB → purge → locales → crypto-js |
 | 5–13 | recorded, scheduled | Q7 delete `src/features/nationals/`; Q8 fold into `HashVerifier`, drop both `Quantum*` routes; Q9 wire About; Q10 7 locales + lazy rest; Q11 Playwright after D0; Q12 provisional skeleton, publishing paused; Q13 `docs/PLAN_4a.md` in the 4(a) commit |
 
@@ -48,7 +48,13 @@ On this base, `npm test` = **32 tests, 32 pass**, `tsc --noEmit` = **0 errors** 
 
 ## 3. Repo-hygiene incidents (these outrank every feature request)
 
-### D1 — a live API key is committed to `main`
+### D1 — a `.env` with `VITE_API_KEY` is committed to `main` — **RESOLVED, and it was not a real secret**
+
+**Update after the hygiene commit, measured rather than assumed.** The committed value is 24 characters, begins `YO`, and does **not** match Google's AI-Studio key format (`^AIza[0-9A-Za-z_-]{35}$`, 39 chars). It is an unfilled placeholder — `YOUR_API_KEY…`-shaped — so nothing needed rotating and no credential was ever exposed. History holds exactly one content version of the file (`63f0ba64`), so there is no older real key lurking in a prior blob. Two lessons kept deliberately: (1) "presence + non-empty length" is not evidence of exposure, and I escalated on weaker grounds than I would demand from a PR; (2) the *mechanism* was still broken — a `.gitignore` that ignores `.env` while `.env` is tracked protects nobody, and had someone pasted a real key tomorrow it would have shipped silently. That is why the commit stands.
+
+Consequence for §14 Q3: **do not rewrite history for this.** A force-push on public `main` costs every clone a re-point and buys nothing against a placeholder. Re-open the question the day a real key is ever committed (check: `git log --all --format=%h -- .env`, then inspect sizes/formats before deciding).
+
+Original finding, preserved for the record:
 
 ```
 git ls-files .env            → .env                      (TRACKED)
@@ -218,9 +224,9 @@ Rules that have kept this project from lying to itself: `tools/ledger_repro.cjs`
 
 | # | defect | evidence | sev | suggested block |
 |---|---|---|---|---|
-| D1 | API key committed | §3 D1 | **critical** | D0 (immediate) |
+| D1 | `.env` with `VITE_API_KEY` committed to a public repo — value proved to be an unfilled placeholder, so no exposure; the ignore-vs-track mechanism was broken regardless | §3 D1 | ~~critical~~ → closed | D0 (done) |
 | D2 | clone can't build on Linux/macOS (win32 `node_modules` tracked) | §3 D2 | **critical** | D0 |
-| D3 | no key ⇒ intake/bot routes white-screen | `geminiService.ts:6-9` | high | 4(e) |
+| D3 | no key ⇒ intake/bot routes white-screen. Now the *default* state of every clone, since the committed `.env` holds a placeholder: `throw` at module scope, reached through 5 live screens | `geminiService.ts:6-9` | **high — upgraded**, this is what a reviewer sees first | 4(e) |
 | D4 | error text delivered as a `quantumHash` | `geminiService.ts:259` | high | 4(e) |
 | D5 | false statutory/tech claims on live screens | §7 | high | 4(e) |
 | D6 | ledger defaults to a silently-volatile store | `store.ts` `defaultDriver()` | high | 4(new) |
