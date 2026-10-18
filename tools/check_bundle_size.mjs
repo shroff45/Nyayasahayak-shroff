@@ -39,6 +39,9 @@ const assets = [...log.matchAll(ASSET_LINE)].map(([, file, size]) => ({
 if (assets.length === 0) {
     console.error(`No emitted-asset lines found in ${logPath}. ` +
         'The build log looks truncated - failing rather than reporting a clean pass.');
+    // A workflow annotation, because the log this tool reads is not always retrievable: a
+    // truncated or unexpected build output must be diagnosable from the run, not guessed at.
+    console.log('::error title=Unparseable build log::no vite asset lines found - the build output was truncated or its format changed');
     process.exit(1);
 }
 
@@ -54,10 +57,19 @@ for (const a of assets.slice(0, 8)) {
 
 if (over.length) {
     console.error(`\n${over.length} asset(s) exceed the ${budgetKb} kB budget:`);
-    for (const a of over) console.error(`  ${a.kb.toFixed(2)} kB  ${a.file}`);
+    for (const a of over) {
+        console.error(`  ${a.kb.toFixed(2)} kB  ${a.file}`);
+        // One annotation per offender: whoever reads the run sees the measured number, so the
+        // fix can be a real code-split instead of a budget raised on a guess.
+        console.log(`::error title=Bundle over budget::${a.file} is ${a.kb.toFixed(2)} kB against a ${budgetKb} kB budget`);
+    }
     console.error('\nEither code-split the route that pulls it in, or raise BUNDLE_BUDGET_KB in');
     console.error('the workflow with a comment saying why the app can still carry it on 2G.');
     process.exit(1);
 }
 
+const largest = assets[0];
 console.log(`\n✓ all ${assets.length} assets within the ${budgetKb} kB budget`);
+// Report the headroom as a notice: a gate that only speaks when it fails hides how close the
+// line is, and "600 kB budget" silently becoming 599.9 kB is how this check gets disabled later.
+console.log(`::notice title=Bundle budget headroom::largest asset ${largest.file} is ${largest.kb.toFixed(2)} kB of ${budgetKb} kB (${(budgetKb - largest.kb).toFixed(2)} kB spare)`);
