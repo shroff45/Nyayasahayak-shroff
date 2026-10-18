@@ -496,9 +496,10 @@ const CaseTrack: React.FC = () => {
                                 <CheckCircle className="w-5 h-5 text-emerald-400" />
                             </div>
                             <div className="text-sm text-emerald-300">
-                                <strong>🔗 Blockchain Secured:</strong> All evidence in this case is secured via
-                                Akhand Ledger with SHA-256 hashing. Verify integrity anytime through the
-                                judicial portal.
+                                <strong>🔗 Hash-chain secured:</strong> every exhibit in this case was hashed with
+                                SHA-256 and appended to the Akhand Ledger <em>on this device</em>. Verify it
+                                here, or hand the exported certificate to anyone - they can check it offline.
+                                Nothing is published to a network, so this record does not travel.
                             </div>
                         </div>
                     </GlassCard>

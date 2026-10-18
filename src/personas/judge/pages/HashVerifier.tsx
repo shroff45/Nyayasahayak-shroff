@@ -1,6 +1,6 @@
 // src/personas/judge/pages/HashVerifier.tsx
 // NyayaSahayak Hybrid v2.0.0 - Judicial Integrity Check
-// Zero-Knowledge Verification of Digital Evidence
+// Recomputes a digest and checks it against the local ledger - no zero-knowledge claim here
 
 import React, { useState, useRef, useCallback } from 'react';
 import {
@@ -9,17 +9,17 @@ import {
     Database, Lock, AlertTriangle
 } from 'lucide-react';
 import { computeFileHash, formatHashForDisplay, HashProgress } from '../../../core/services/evidenceHasher';
-import { getBlockchain, getLedger } from '../../../services/akhandLedger';
-import { BlockchainBlock } from '../../../types';
+import { getLedgerEntries, getLedger } from '../../../services/akhandLedger';
+import { LedgerEntry } from '../../../types';
 
 /**
  * A ledger record commits to the exhibit digest in one of several places depending on which
  * screen wrote it, so the comparison checks each - case-insensitively, because hex digests
  * arrive upper-cased from lab reports and lower-cased from browsers.
  */
-const blockCommitsToDigest = (block: BlockchainBlock, digest: string): boolean => {
+const entryCommitsToDigest = (entry: LedgerEntry, digest: string): boolean => {
     const target = digest.trim().toLowerCase();
-    const data = (block.data ?? {}) as Record<string, unknown>;
+    const data = (entry.data ?? {}) as Record<string, unknown>;
     const candidates: unknown[] = [data.hash, data.sha256, data.leafDigest];
     if (typeof data.caseNotes === 'string') {
         try {
@@ -37,7 +37,7 @@ const HashVerifier: React.FC = () => {
     const [progress, setProgress] = useState<HashProgress | null>(null);
     const [result, setResult] = useState<'IDLE' | 'MATCH' | 'NO_MATCH' | 'ERROR'>('IDLE');
     const [detail, setDetail] = useState<string>('');
-    const [matchedBlock, setMatchedBlock] = useState<BlockchainBlock | null>(null);
+    const [matchedEntry, setMatchedEntry] = useState<LedgerEntry | null>(null);
     const [currentFile, setCurrentFile] = useState<File | null>(null);
     const [computedHash, setComputedHash] = useState<string>('');
     const [dragActive, setDragActive] = useState(false);
@@ -49,7 +49,7 @@ const HashVerifier: React.FC = () => {
 
         setIsVerifying(true);
         setResult('IDLE');
-        setMatchedBlock(null);
+        setMatchedEntry(null);
         setDetail('');
         setCurrentFile(file);
         setComputedHash('');
@@ -63,8 +63,8 @@ const HashVerifier: React.FC = () => {
 
             // 2. Find the ledger record that committed to this digest - the digest is stored in
             //    the record payload (or in its caseNotes JSON for records written before that).
-            const chain = await getBlockchain();
-            const foundBlock = chain.find((block) => blockCommitsToDigest(block, hashResult.hash));
+            const chain = await getLedgerEntries();
+            const foundBlock = chain.find((block) => entryCommitsToDigest(block, hashResult.hash));
 
             if (!foundBlock) {
                 setResult('NO_MATCH');
@@ -79,7 +79,7 @@ const HashVerifier: React.FC = () => {
             // 3. Verify the record itself: payload digest, Merkle inclusion, and the anchor signature.
             const ledger = await getLedger();
             const verdict = await ledger.verifyRecord(foundBlock.index);
-            setMatchedBlock(foundBlock);
+            setMatchedEntry(foundBlock);
             setResult(verdict.ok ? 'MATCH' : 'NO_MATCH');
             setDetail(verdict.reason);
         } catch (error) {
@@ -125,7 +125,7 @@ const HashVerifier: React.FC = () => {
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold text-white">Evidence Integrity Verifier</h1>
-                        <p className="text-slate-400 text-sm">BSA Section 63(2) Compliance Check • Zero-Knowledge Proof</p>
+                        <p className="text-slate-400 text-sm">Evidence integrity check &bull; recomputed SHA-256 against this device&rsquo;s ledger</p>
                     </div>
                 </div>
             </div>
@@ -251,7 +251,7 @@ const HashVerifier: React.FC = () => {
                         <p className="text-xs text-slate-400 px-1 pb-2">{detail}</p>
                     )}
 
-                    {result === 'MATCH' && matchedBlock && (
+                    {result === 'MATCH' && matchedEntry && (
                         <div className="bg-slate-800/50 rounded-xl border border-emerald-500/50 overflow-hidden">
                             <div className="bg-emerald-500/20 p-6 border-b border-emerald-500/30 flex items-center gap-4">
                                 <div className="w-12 h-12 bg-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center">
@@ -260,7 +260,7 @@ const HashVerifier: React.FC = () => {
                                 <div>
                                     <h2 className="text-xl font-bold text-emerald-400">✅ Integrity Verified</h2>
                                     <p className="text-emerald-300/80 text-sm">
-                                        The digest recomputed here matches ledger record #{matchedBlock?.index}, whose anchor signature
+                                        The digest recomputed here matches ledger record #{matchedEntry?.index}, whose anchor signature
                                         verifies against a pinned key.
                                     </p>
                                 </div>
@@ -281,7 +281,7 @@ const HashVerifier: React.FC = () => {
                                             <Box className="w-4 h-4" />
                                             <span className="font-semibold text-sm">Block Position</span>
                                         </div>
-                                        <p className="font-mono text-white text-lg">#{matchedBlock.index}</p>
+                                        <p className="font-mono text-white text-lg">#{matchedEntry.index}</p>
                                     </div>
                                     <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
                                         <div className="flex items-center gap-2 mb-2 text-purple-400">
@@ -289,7 +289,7 @@ const HashVerifier: React.FC = () => {
                                             <span className="font-semibold text-sm">Timestamp</span>
                                         </div>
                                         <p className="font-mono text-white text-sm">
-                                            {new Date(matchedBlock.timestamp).toLocaleString()}
+                                            {new Date(matchedEntry.timestamp).toLocaleString()}
                                         </p>
                                     </div>
                                 </div>

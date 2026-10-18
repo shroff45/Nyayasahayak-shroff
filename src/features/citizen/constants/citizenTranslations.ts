@@ -87,7 +87,7 @@ const citizenEn = {
     complaint_file_another: 'File Another Complaint',
     complaint_review_extracted: 'Review AI-Extracted Details',
     complaint_submitting: 'Submitting...',
-    complaint_submit_blockchain: 'Submit to Blockchain',
+    complaint_submit_blockchain: 'Save to Ledger',
 
     // Track Case Page
     track_nyayapath: 'NyayaPath',
@@ -126,7 +126,7 @@ const citizenEn = {
     voice_review_details: 'Review Complaint Details',
     voice_case_filed: 'Case Filed Successfully!',
     voice_file_another: 'File Another Case',
-    voice_submit_blockchain: 'Submit to Blockchain',
+    voice_submit_blockchain: 'Save to Ledger',
     know_your_rights: 'Know Your FIR Rights',
 };
 
@@ -210,7 +210,7 @@ const citizenHi: PartialTranslation = {
     complaint_file_another: 'एक और शिकायत दर्ज करें',
     complaint_review_extracted: 'AI-निष्कर्षित विवरण की समीक्षा करें',
     complaint_submitting: 'जमा हो रहा है...',
-    complaint_submit_blockchain: 'ब्लॉकचेन पर जमा करें',
+    complaint_submit_blockchain: 'लेजर में सहेजें',
     // Track Case Page - Hindi
     track_nyayapath: 'न्यायपथ',
     track_subtitle: 'अपने केस की यात्रा को रियल-टाइम में ट्रैक करें',
@@ -245,7 +245,7 @@ const citizenHi: PartialTranslation = {
     voice_review_details: 'शिकायत विवरण की समीक्षा करें',
     voice_case_filed: 'केस सफलतापूर्वक दर्ज!',
     voice_file_another: 'एक और केस दर्ज करें',
-    voice_submit_blockchain: 'ब्लॉकचेन पर जमा करें',
+    voice_submit_blockchain: 'लेजर में सहेजें',
 };
 
 // Bengali

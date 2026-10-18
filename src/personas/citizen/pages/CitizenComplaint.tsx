@@ -375,7 +375,7 @@ const CitizenComplaint: React.FC = () => {
                         CNR: {cnr}
                     </p>
                     <p className="text-slate-400 text-sm mb-6">
-                        🔗 Your complaint has been recorded on the blockchain. You will receive updates via SMS and email.
+                        🔗 Your complaint is recorded in this device's evidence ledger and hashed. Nothing has been sent to a court, and there is no SMS or email update - this build has no server to send one from.
                     </p>
                     <button
                         onClick={resetForm}

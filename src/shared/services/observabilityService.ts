@@ -6,7 +6,7 @@ class ObservabilityService {
     private listeners: Listener[] = [];
 
     // Emit a trace event so the UI can show it
-    trace(agent: 'JUDGE_ASSIST' | 'EVIDENCE_AI' | 'BLOCKCHAIN_WATCHDOG' | 'SYSTEM', action: string, confidence: number) {
+    trace(agent: 'JUDGE_ASSIST' | 'EVIDENCE_AI' | 'INTEGRITY_WATCHDOG' | 'SYSTEM', action: string, confidence: number) {
         const traceData: AIDecisionTrace = {
             traceId: `tr-${Math.random().toString(36).substr(2, 9)}`,
             agent,
