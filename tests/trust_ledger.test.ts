@@ -51,7 +51,7 @@ const fakeStorage = (): WebStorage & { map: Map<string, string>; failNextWrite?:
 };
 
 const freshIdentity = async () => {
-    const id = await generateSigningIdentity('Test bench key');
+    const id = await generateSigningIdentity();
     return {
         identity: { ...id, custody: 'session-only' as const },
         trusted: [{
@@ -360,4 +360,24 @@ test('a signature is not accepted for a payload with one extra field', async () 
     assert.ok(await verifySignature(identity.publicKey, signature, payload));
     assert.equal(await verifySignature(identity.publicKey, signature, { ...payload, extra: 1 }), false);
     assert.equal(await verifySignature(identity.publicKey, signature, { ...payload, merkleRoot: 'bb'.repeat(32) }), false);
+});
+
+test('a payload with an explicitly-undefined field still verifies after a reload', async () => {
+    const { identity, trusted } = await freshIdentity();
+    const storage = fakeStorage();
+    const ledger = await createLedger({ driver: localStorageDriver(storage), identity, trustedAuthorities: trusted });
+    // Exactly the shape the Section 63 wizard produces: optional fields set to undefined rather
+    // than omitted. The driver drops them on write, so the digest has to be taken over the
+    // reduced object or every such record would read as tampered the moment it was re-read.
+    await ledger.append({
+        kind: 'EVIDENCE',
+        data: { exhibitNo: 'EX-UNDEF', badgeNumber: undefined, remarks: undefined, note: 'kept' },
+    });
+    await ledger.anchor();
+    const reopened = await createLedger({ driver: localStorageDriver(storage), identity, trustedAuthorities: trusted });
+    const verdict = await reopened.verifyRecord(1);
+    assert.equal(verdict.digestMatches, true, verdict.reason);
+    assert.equal(verdict.ok, true, verdict.reason);
+    const stored = JSON.parse(storage.getItem('nyaya:ledger:v1:records')!)[0];
+    assert.equal('badgeNumber' in stored.data, false, 'the key is gone from storage, as JSON does');
 });

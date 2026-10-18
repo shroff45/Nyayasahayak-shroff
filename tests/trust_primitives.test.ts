@@ -148,8 +148,8 @@ test('canonical encoding is key-order independent, so signing and verifying agre
 });
 
 test('an anchor signature verifies only against the key that made it', async () => {
-    const signer = await generateSigningIdentity('Sessions Court 4');
-    const other = await generateSigningIdentity('Some other terminal');
+    const signer = await generateSigningIdentity();
+    const other = await generateSigningIdentity();
     const payload = { exhibit: 'EX-1', root: 'aa'.repeat(32) };
     const signature = await signPayload(signer.privateKey, payload);
 
@@ -159,13 +159,13 @@ test('an anchor signature verifies only against the key that made it', async () 
 });
 
 test('a malformed signature is a failed check, not a crash - the verify path faces pasted input', async () => {
-    const signer = await generateSigningIdentity('Sessions Court 4');
+    const signer = await generateSigningIdentity();
     assert.equal(await verifySignature(signer.publicKey, 'not-hex', { a: 1 }), false);
     assert.equal(await verifySignature(signer.publicKey, 'ab'.repeat(64), { a: 1 }), false);
 });
 
 test('fingerprint is derived from the public key, not supplied by the caller', async () => {
-    const signer = await generateSigningIdentity('Label says one thing');
+    const signer = await generateSigningIdentity();
     const fromPublic = await fingerprintFromPublicKey(signer.publicKey);
     assert.match(fromPublic, /^NYAYA-A1:[0-9A-F]{8}$/);
     const renamed = { ...signer };
@@ -173,7 +173,7 @@ test('fingerprint is derived from the public key, not supplied by the caller', a
 });
 
 test('trust decision separates "signature is valid" from "signer is trusted"', async () => {
-    const signer = await generateSigningIdentity('Malkhana terminal 7');
+    const signer = await generateSigningIdentity();
     const payload = { anchorIndex: 1, merkleRoot: 'aa'.repeat(32) };
     const signature = await signPayload(signer.privateKey, payload);
     const record = {
@@ -201,4 +201,17 @@ test('trust decision separates "signature is valid" from "signer is trusted"', a
 test('anchor algorithm label is the real curve, and nothing claims post-quantum', () => {
     assert.equal(KEY_ALG, 'ECDSA-P256-SHA256');
     assert.doesNotMatch(KEY_ALG, /kyber|quantum|zkp|zero[- ]knowledge/i);
+});
+
+test('canonicalBytes ignores keys that JSON cannot store', () => {
+    // A caller writing `{ badgeNumber: undefined }` - which is what an optional field in this app's
+    // own certificate type produces - must not hash differently from a caller who omitted the key.
+    // If they differ, the stored record can never reproduce its own digest.
+    const withUndefined = canonicalBytes({ a: 1, badge: undefined, nested: { x: 1, y: undefined } });
+    const without = canonicalBytes({ a: 1, nested: { x: 1 } });
+    assert.equal(toHex(withUndefined), toHex(without));
+    // Key order still matters not, and a real null still matters: dropping undefined must not
+    // quietly erase an explicit "no value" answer, which is a different fact from "not asked".
+    assert.notEqual(toHex(canonicalBytes({ a: 1, badge: null })), toHex(without));
+    assert.equal(toHex(canonicalBytes({ b: 2, a: 1 })), toHex(canonicalBytes({ a: 1, b: 2 })));
 });

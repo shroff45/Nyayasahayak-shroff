@@ -39,7 +39,7 @@ for (const [name, source] of Object.entries(modules)) {
 }
 
 const { applicableLawFor, toGoldenCase } = await import(path.join(bundleDir, 'adapter.mjs'));
-const { isForensicVideoMandatory, BNS_EFFECTIVE_DATE } = await import(path.join(bundleDir, 'interlock.mjs'));
+const { isForensicVideoMandatory, BNS_EFFECTIVE_DATE, validateForensicCompliance } = await import(path.join(bundleDir, 'interlock.mjs'));
 
 let pass = 0;
 let fail = 0;
@@ -126,6 +126,41 @@ test('existing callers that pass no incident date keep their previous behaviour'
 });
 test('the exported commencement constant is the date the statutes actually came into force', () => {
     assert.equal(BNS_EFFECTIVE_DATE.toISOString().slice(0, 10), '2024-07-01');
+});
+
+console.log('\n=== D. the interlock\'s video leg accepts a verified exhibit (a defect that locked honest callers) ===');
+const token = {
+    tokenId: 'TOK-1', caseId: 'C-1', investigatingOfficerId: 'SI-1', investigatingOfficerName: 'SI Kumar',
+    forensicExpertId: 'FSL-9', forensicExpertName: 'Dr Rao', forensicExpertDesignation: 'Scientist B',
+    visitTimestamp: new Date('2024-09-01T10:00:00Z'),
+    geoLocation: { latitude: 28.5, longitude: 77.2, accuracy: 12 },
+    handshakeMethod: 'MANUAL', digitalSignature: 'ledger-record-7', isVerified: true,
+};
+const video = (over = {}) => ({
+    videoId: 'V-1', caseId: 'C-1', fileName: 'scene.mp4', fileSize: 1000, duration: 60, mimeType: 'video/mp4',
+    captureDevice: { make: 'Samsung', model: 'S23', osVersion: 'Android 14' },
+    captureTimestamp: new Date('2024-09-01T09:00:00Z'), ntpSynced: false, geoLocation: { latitude: 28.5, longitude: 77.2 },
+    sourceHash: 'ab'.repeat(32), hashAlgorithm: 'SHA-256', uploadStatus: 'UPLOADED', integrityStatus: 'UNVERIFIED', ...over,
+});
+test('an uploaded, unverified video plus a verified token opens the gate', () => {
+    const c = validateForensicCompliance('C-1', video(), token, true);
+    assert.equal(c.checkResult, 'PASS');
+    assert.equal(c.isHashVerified, false, 'integrity was never claimed, so none is reported');
+});
+test('a video already VERIFIED against the ledger does NOT read as missing', () => {
+    const c = validateForensicCompliance('C-1', video({ uploadStatus: 'VERIFIED', integrityStatus: 'VERIFIED' }), token, true);
+    assert.equal(c.checkResult, 'PASS');
+    assert.equal(c.isHashVerified, true);
+});
+test('a video still uploading, or whose hash mismatched, keeps the gate shut', () => {
+    assert.equal(validateForensicCompliance('C-1', video({ uploadStatus: 'UPLOADING' }), token, true).checkResult, 'FAIL_NO_VIDEO');
+    assert.equal(validateForensicCompliance('C-1', video({ integrityStatus: 'MISMATCH' }), token, true).checkResult, 'FAIL_HASH_MISMATCH');
+    assert.equal(validateForensicCompliance('C-1', video({ uploadStatus: 'PENDING' }), token, true).checkResult, 'FAIL_NO_VIDEO');
+});
+test('no expert token means no gate, however good the video is', () => {
+    const c = validateForensicCompliance('C-1', video({ uploadStatus: 'VERIFIED' }), null, true);
+    assert.equal(c.checkResult, 'FAIL_NO_EXPERT');
+    assert.equal(c.interlockStatus, 'LOCKED');
 });
 
 console.log(`\n=== SUMMARY: ${pass} passed, ${fail} failed ===\n`);

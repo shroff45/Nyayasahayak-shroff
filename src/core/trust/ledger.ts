@@ -139,7 +139,7 @@ const foldHead = async (previousHead: string, leafDigest: string): Promise<strin
  */
 export const anchorSignablePayload = (anchor: AnchorRecord): Record<string, unknown> => {
     const { signature, ...rest } = anchor as unknown as Record<string, unknown>;
-    return rest;
+    return jsonSafe(rest);
 };
 
 /**
@@ -165,6 +165,9 @@ export const payloadForDigest = (record: DigestInput): Record<string, unknown> =
 
 /** The digest a record commits to. Exposed so a verifier can recompute it without re-deriving
  * the record's shape by hand - the field layout is this module's business, not the caller's. */
+/** Round-trips a value through JSON, which is the shape every journal driver can actually persist. */
+const jsonSafe = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
 export const leafDigestFor = (record: DigestInput): Promise<string> =>
     sha256Hex(canonicalBytes(payloadForDigest(record)));
 
@@ -252,7 +255,12 @@ class LedgerImpl implements Ledger {
         }
         const previousDigest = records.length ? records[records.length - 1].leafDigest : EMPTY_ROOT;
         const timestamp = input.timestamp ?? new Date().toISOString();
-        const body = { kind: input.kind, ...input.data };
+        // Hash what will be stored, not what was handed in. `driver.append` round-trips the record
+        // through JSON, so a payload carrying a Date, a function, or a key explicitly set to
+        // undefined would otherwise be committed to bytes that no reader can reproduce - and the
+        // record would then verify as tampered with on arrival. Reducing it first makes the writer
+        // and the reader see the same object by construction.
+        const body = jsonSafe({ kind: input.kind, ...input.data });
         const index = records.length + 1;
         const leafDigest = await leafDigestFor({ index, timestamp, previousDigest, data: body });
         const nextHead = await foldHead(meta?.headDigest ?? EMPTY_ROOT, leafDigest);
