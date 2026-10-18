@@ -94,8 +94,14 @@ export const validateForensicCompliance = (
         };
     }
 
-    // Check 1: Video exists
-    if (!forensicVideo || forensicVideo.uploadStatus !== 'UPLOADED') {
+    // Check 1: Video exists and has finished arriving.
+    // 'VERIFIED' used to fall through to FAIL_NO_VIDEO here — a video that had been checked against
+    // the ledger was treated as never uploaded at all, so the more honest a caller was about the
+    // status it held, the more surely the gate locked. Any status that means "the file is in the
+    // locker" satisfies this leg; integrity is judged on its own terms below.
+    const videoIsPresent = forensicVideo
+        && (forensicVideo.uploadStatus === 'UPLOADED' || forensicVideo.uploadStatus === 'VERIFIED');
+    if (!videoIsPresent) {
         return createLockedCompliance(caseId, 'FAIL_NO_VIDEO', 'Mandatory forensic video not uploaded', now);
     }
 
@@ -180,6 +186,25 @@ export const requestComplianceOverride = (
         }
     };
 };
+
+/**
+ * Re-apply an override that was recorded elsewhere (a ledger entry, a case file) to freshly
+ * computed compliance.
+ *
+ * `requestComplianceOverride` below only mutates the object it is handed, so an override lived and
+ * died inside one component's state: reload the page and a pending request vanished without a trace
+ * while the officer believed they had filed it. This is the read side of persisting the request —
+ * it never invents an approval, and it never clears a lock that the compliance data still justifies.
+ */
+export const withRecordedOverride = (
+    compliance: ForensicCompliance,
+    override: NonNullable<ForensicCompliance['override']>
+): ForensicCompliance => ({
+    ...compliance,
+    hasOverride: true,
+    override,
+    interlockStatus: override.isApproved ? 'OVERRIDE_APPROVED' : 'OVERRIDE_PENDING',
+});
 
 /**
  * Approve override request (by SP or higher authority)

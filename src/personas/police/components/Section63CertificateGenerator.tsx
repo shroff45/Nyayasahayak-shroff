@@ -1,11 +1,20 @@
 // src/personas/police/components/Section63CertificateGenerator.tsx
 // NyayaSahayak v2.0.0 - BSA Section 63 Certificate Generator
 // Wizard-style component for digital evidence certification
+//
+// Mounted by src/personas/police/pages/Section63CertificatePage.tsx at /police/certificate/:evidenceId.
+// The digest on the certificate comes from the ledger record for this exhibit when there is one;
+// re-hashing a file is offered as a *check against* that digest, not as the normal source of it.
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
-    FileCheck, Shield, Upload, Smartphone, CheckCircle2, Loader2, Download, FileSignature, Hash } from 'lucide-react';
+    FileCheck, Shield, Upload, Smartphone, CheckCircle2, Loader2, Download, FileSignature, Hash, AlertTriangle } from 'lucide-react';
 import { computeFileHash, formatHashForDisplay, type HashProgress } from '../../../core/services/evidenceHasher';
+import {
+    formatSection63Certificate,
+    downloadTextFile,
+    section63FileName,
+} from '../../../core/services/section63Certificate';
 import type { DeviceMetadata, Section63PartA } from '../../../types/evidence.types';
 
 interface Section63CertificateGeneratorProps {
@@ -13,6 +22,16 @@ interface Section63CertificateGeneratorProps {
     /** Document being certified. A §63(4) certificate has to name the computer output it hashes. */
     fileName?: string;
     fileSize?: number;
+    caseId?: string;
+    /**
+     * Digest the ledger already holds for this exhibit. Passed in by the page so the certificate
+     * certifies the thing that was anchored, instead of a file the officer happened to re-select.
+     */
+    ledgerDigest?: string;
+    /** One line saying where that digest came from, e.g. "record #7, anchored at #8". */
+    ledgerDigestNote?: string;
+    /** Printed under LEDGER COORDINATES in the document. */
+    ledgerLines?: string[];
     onCertificateGenerated?: (partA: Section63PartA) => void;
 }
 
@@ -22,6 +41,10 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
     evidenceId,
     fileName,
     fileSize,
+    caseId,
+    ledgerDigest,
+    ledgerDigestNote,
+    ledgerLines,
     onCertificateGenerated
 }) => {
     const [currentStep, setCurrentStep] = useState<WizardStep>('device');
@@ -43,12 +66,15 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
     const [controlPeriod, setControlPeriod] = useState('');
 
     // Hash
-    const [computedHash, setComputedHash] = useState<string>('');
+    const [computedHash, setComputedHash] = useState<string>(ledgerDigest ?? '');
+    const [hashOrigin, setHashOrigin] = useState<'ledger' | 'file'>(ledgerDigest ? 'ledger' : 'file');
+    const [rehash, setRehash] = useState<{ fileName: string; matches: boolean } | null>(null);
 
     // Deponent
     const [deponentName, setDeponentName] = useState('');
     const [deponentDesignation, setDeponentDesignation] = useState('');
     const [badgeNumber, setBadgeNumber] = useState('');
+    const [issued, setIssued] = useState<Section63PartA | null>(null);
 
     const steps: { key: WizardStep; label: string; icon: React.ReactNode }[] = [
         { key: 'device', label: 'Device Info', icon: <Smartphone className="w-4 h-4" /> },
@@ -58,6 +84,16 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
         { key: 'complete', label: 'Complete', icon: <CheckCircle2 className="w-4 h-4" /> }
     ];
 
+    // The page reads the exhibit out of an async store, so the digest usually arrives after mount.
+    useEffect(() => {
+        if (!ledgerDigest) return;
+        // Never overwrite a deliberate re-hash with the stored value.
+        setHashOrigin((origin) => {
+            if (origin !== 'file') setComputedHash(ledgerDigest);
+            return origin === 'file' ? origin : 'ledger';
+        });
+    }, [ledgerDigest]);
+
     const handleHashCompute = useCallback(async (file: File) => {
         setIsProcessing(true);
         try {
@@ -65,8 +101,15 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
                 setHashProgress(progress);
             });
             setComputedHash(result.hash);
+            setHashOrigin('file');
+            // Re-hashing is a verification act, so say what it found. A mismatch is reported, not
+            // silently absorbed, and the officer chooses which digest to certify with open eyes.
+            setRehash(ledgerDigest
+                ? { fileName: file.name, matches: result.hash.toLowerCase() === ledgerDigest.toLowerCase() }
+                : null);
         } catch (error) {
             console.error('Hash computation failed:', error);
+            setRehash(null);
         } finally {
             setIsProcessing(false);
             setHashProgress(null);
@@ -91,8 +134,17 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
             signatureTimestamp: new Date()
         };
 
+        setIssued(partA);
         setCurrentStep('complete');
         onCertificateGenerated?.(partA);
+    };
+
+    const handleDownloadPartA = () => {
+        if (!issued) return;
+        downloadTextFile(
+            section63FileName(evidenceId),
+            formatSection63Certificate(issued, { evidenceId, fileName, fileSize, caseId, ledgerLines })
+        );
     };
 
     const renderStepContent = () => {
@@ -258,6 +310,44 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
                             BSA Schedule requires cryptographic hash for evidence integrity.
                         </p>
 
+                        {ledgerDigest && (
+                            <div className={`p-3 rounded-lg border text-xs space-y-1 ${hashOrigin === 'file'
+                                ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                                : 'border-blue-500/40 bg-blue-500/10 text-blue-100'
+                                }`}>
+                                <p>
+                                    {hashOrigin === 'file'
+                                        ? 'The certificate will carry the digest you just computed from the file, which is NOT what the ledger holds for this exhibit.'
+                                        : `Hash taken from the ledger record for ${evidenceId} — the digest that was anchored, not a fresh read of the file.`}
+                                </p>
+                                {ledgerDigestNote && <p className="text-slate-400">{ledgerDigestNote}</p>}
+                                {hashOrigin === 'file' && (
+                                    <button
+                                        onClick={() => { setComputedHash(ledgerDigest); setHashOrigin('ledger'); setRehash(null); }}
+                                        className="mt-1 px-2 py-1 bg-slate-700 text-white rounded"
+                                    >
+                                        Use the recorded digest instead
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {rehash && (
+                            <div className={`p-3 rounded-lg border text-xs flex items-center gap-2 ${rehash.matches
+                                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                                : 'border-red-500/50 bg-red-500/10 text-red-200'
+                                }`}>
+                                {rehash.matches
+                                    ? <CheckCircle2 className="w-4 h-4" />
+                                    : <AlertTriangle className="w-4 h-4" />}
+                                <span>
+                                    Re-hash of {rehash.fileName} {rehash.matches
+                                        ? 'matches the recorded digest.'
+                                        : 'does NOT match the digest in the ledger. The exhibit and this file are different bytes — do not certify either one until you know which is the exhibit.'}
+                                </span>
+                            </div>
+                        )}
+
                         <div className="p-6 border-2 border-dashed border-slate-600 rounded-xl text-center">
                             {!computedHash && !isProcessing && (
                                 <>
@@ -294,7 +384,9 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
                             {computedHash && (
                                 <div>
                                     <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                                    <p className="text-emerald-400 font-bold mb-2">Hash Computed Successfully</p>
+                                    <p className="text-emerald-400 font-bold mb-2">
+                                        {hashOrigin === 'ledger' ? 'Recorded Digest Loaded' : 'Hash Computed Successfully'}
+                                    </p>
                                     <div className="bg-slate-900/50 rounded-lg p-4 text-left">
                                         <p className="text-xs text-slate-400 mb-1">SHA-256 Hash Value:</p>
                                         <p className="font-mono text-xs text-emerald-400 break-all">
@@ -404,12 +496,37 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
                             It will be routed to an Expert for Part B verification.
                         </p>
 
+                        <div className="text-left bg-slate-900/50 border border-slate-700 rounded-lg p-4 mb-6 space-y-1 text-xs">
+                            <p className="font-mono text-emerald-400 break-all">{issued?.hashValue?.toUpperCase() ?? '—'}</p>
+                            <p className="text-slate-400">
+                                {issued?.deponentName} · {issued?.designation}
+                                {issued?.badgeNumber ? ` · ${issued.badgeNumber}` : ''}
+                            </p>
+                            {(ledgerLines ?? []).map((line) => (
+                                <p key={line} className="text-slate-500 font-mono">{line}</p>
+                            ))}
+                        </div>
+
                         <div className="flex gap-3 justify-center">
-                            <button className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2">
+                            <button
+                                onClick={handleDownloadPartA}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2"
+                            >
                                 <Download className="w-4 h-4" />
-                                Download Part A (PDF)
+                                Download the certificate (text)
+                            </button>
+                            <button
+                                onClick={() => setCurrentStep('review')}
+                                className="px-6 py-2 border border-slate-600 text-slate-300 rounded-lg"
+                            >
+                                Back to review
                             </button>
                         </div>
+                        <p className="text-[11px] text-slate-500 mt-4 max-w-lg mx-auto">
+                            Plain text, because that is what this app can actually produce: no PDF writer is
+                            present, and a certificate that mislabels its own format is a worse outcome than
+                            one that prints from a text file. Part B is included as a blank for the expert.
+                        </p>
                     </div>
                 );
         }

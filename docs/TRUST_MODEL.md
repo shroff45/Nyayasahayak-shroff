@@ -21,6 +21,7 @@ Everything below describes `src/core/trust/` (the mechanisms) and `src/services/
 | `keys.ts` | ECDSA over P-256 with SHA-256 (`ECDSA-P256-SHA256`). The private key is a `CryptoKey`; the public key is pinned by fingerprint (`NYAYA-A1:xxxxxxxx`). | A signature over the anchor's canonical bytes. Whoever holds the key cannot deny having produced it *to the extent that the key stayed private*. |
 | `store.ts` | A journal in `localStorage`, or IndexedDB when available, or memory. Each record: `index`, `timestamp`, `leafDigest`, `previousDigest`, `data`. Head digest = fold of `previousHead | leafDigest`. | Survives a refresh, and a rewrite of history has to be consistent all the way to the head. Not append-only in the OS sense — the browser's storage belongs to the machine. |
 | `ledger.ts` | Ties the four together: append → anchor (Merkle root + signature, written back as a journal record) → verify. | `verifyRecord(i)` answers "is this record unchanged, is it inside a signed batch, and is that batch signed by a key I trust". |
+| `custody.ts` | Reads the same journal as a chain of custody: one record per node, and each node's badge is the `verifyRecord` answer for *that* record. Appends a transfer and anchors it in the same call. | A timeline that cannot claim more than its records prove — and that shows `PENDING` for a write no anchor covers yet, `UNKNOWN` for a signature from an unpinned key, `MISMATCH` for an edited one. |
 | `bail.ts` | Bail escrow as ledger events (create / appearance / refund / forfeit), state rebuilt from the log on each read. | A refund decision that survives a refresh and is auditable, rather than a `Map` that evaporated. |
 
 ### Verification, precisely
@@ -106,7 +107,31 @@ write is *not* silently downgraded to memory, because "persisted" is a claim the
 | Has the private key | Can forge new anchors legitimately. Mitigation: non-extractable keys, a second authority, key rotation. Not closed by this code. |
 | Clears site data | Journal gone. Not recoverable; mitigation is exporting certificates/anchors to a second channel, which `exportCertificate()` makes easy, and no screen prompts for yet. |
 
-## 6. If you want to say something about this system
+## 6. Who reads it (the screens, and what each is allowed to claim)
+
+The journal above is what these three surfaces show. None of them owns a copy of the data, which
+is the point: a judge and a police officer reading the same exhibit are reading the same records.
+
+- **Police → Evidence Locker** (`/police/evidence`). Upload hashes the file with WebCrypto, appends
+  an `EVIDENCE` record and anchors it; the list is the journal, not session state. The custody strip
+  in each card is the shared timeline, fed by `buildCustodyChain`, plus a form that writes a real
+  transfer record. Uploading no longer defaults an exhibit to "unlinked": the case is chosen, or the
+  officer says explicitly that this was a pre-FIR seizure.
+- **Police → Section 63 certificate** (`/police/certificate/:evidenceId`). The wizard's Part A carries
+  the digest *the ledger holds* for that exhibit; re-hashing the file is offered as a comparison
+  against it, and a mismatch is reported instead of overwriting the record. Issuing writes two
+  records: the certified particulars, then the digest of the printed text itself, so a PDF-less
+  `.txt` download can be re-hashed by anyone holding the file.
+- **Police → charge-sheet gate** (`/police/chargesheet/:caseId/gate`). BNSS s.176(3) compliance is
+  computed from the case record and the exhibit marked as the scene video, verified in the ledger;
+  the expert's attendance is a signed record, not a checkbox. An override can be requested and is
+  recorded — and stays pending, because nothing in a single-user browser app gets to approve its own
+  exemption.
+- **Judge → chain of custody** (`/judge/case/:id/chain-of-custody`). Timeline, per-record reasons,
+  unexplained gaps, one-click export of an inclusion proof, and a box that verifies a proof pasted
+  in from another machine against the keys pinned here.
+
+## 7. If you want to say something about this system
 
 Allowed, and accurate:
 
@@ -121,6 +146,7 @@ blockchain-secured, tamper-proof, immutable, court-admissible, non-repudiable, s
 Re-run the proof:
 
 ```bash
-node tools/ledger_repro.cjs          # 12 claims, exit non-zero if any fails
-npm test                             # 32 trust tests + 10 statutory tests
+node tools/ledger_repro.cjs          # 18 claims, exit non-zero if any fails
+npm test                             # 49 tests (trust primitives, ledger, custody, the s.63
+                                     # certificate document) + 14 statutory tests
 ```

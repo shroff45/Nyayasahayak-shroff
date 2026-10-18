@@ -95,12 +95,27 @@ export const importPublicKey = async (jwk: JsonWebKey): Promise<CryptoKey> =>
  * signature can be malleated into a second valid encoding), so signatures are always made over
  * this fixed serialization and verifiers recompute it — never re-serialize a mutated object.
  */
+/**
+ * Deterministic bytes for a payload: object keys sorted, so two objects that differ only in
+ * insertion order sign and verify identically.
+ *
+ * Two rules in here exist because of how the journal persists data rather than because of any
+ * cryptographic taste, and both were found by a test failing on a real payload:
+ *  - `undefined`-valued keys are dropped. A JSON store cannot hold them, so a hash that counted
+ *    them (as `null`) described bytes that would never be read back: the record verified as
+ *    "edited after it was written" the moment a caller wrote `{ badgeNumber: undefined }`, which
+ *    is what optional fields in this app's own certificate type produce.
+ *  - Dates are not special-cased, so the caller must hand us something JSON-safe (see
+ *    `jsonSafeBytes` in ledger.ts). Left alone, a `Date` object walked to `{}` and every
+ *    timestamp in a payload would have hashed identically.
+ */
 export const canonicalBytes = (payload: Record<string, unknown>): Uint8Array => {
     const stable = (value: unknown): string => {
         if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
         if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
-        const keys = Object.keys(value as object).sort();
-        return `{${keys.map((k) => `${JSON.stringify(k)}:${stable((value as Record<string, unknown>)[k])}`).join(',')}}`;
+        const record = value as Record<string, unknown>;
+        const keys = Object.keys(record).filter((k) => record[k] !== undefined).sort();
+        return `{${keys.map((k) => `${JSON.stringify(k)}:${stable(record[k])}`).join(',')}}`;
     };
     return utf8(stable(payload));
 };
