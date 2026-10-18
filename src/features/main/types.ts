@@ -48,17 +48,6 @@ export interface DocumentAnalysisResult {
     sentiment?: string;
 }
 
-export interface QuantumFingerprintResult {
-    quantumHash: string;
-    integrityStatus: 'Verified & Secure' | 'Potential Tampering Detected';
-    anomaliesDetected: string[];
-    verificationTimestamp: string;
-    hash?: string;
-    timestamp?: string;
-    method?: string;
-    verified?: boolean;
-}
-
 export interface ChatMessage {
     role: 'user' | 'model' | 'system';
     content: string;

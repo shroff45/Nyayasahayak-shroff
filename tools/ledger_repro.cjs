@@ -468,6 +468,7 @@ const main = async () => {
         "import GatePage from '../src/personas/police/pages/ChargeSheetGatePage';",
         "import CustodyPage from '../src/personas/judge/pages/CaseChainOfCustodyPage';",
         "import CertificateWizard from '../src/personas/police/components/Section63CertificateGenerator';",
+        "import IntegrityPage from '../src/features/main/components/DocumentIntegrityPage';",
         "",
         "const shell = (route: string, pattern: string, node: React.ReactNode) => renderToStaticMarkup(",
         "    <AuthProvider><AppSettingsProvider><WorkspaceProvider><ToastProvider>",
@@ -478,6 +479,7 @@ const main = async () => {
         ");",
         "",
         "export const screens = () => ({",
+        "    integrity: shell('/admin/integrity', '/admin/integrity', <IntegrityPage t={(key: string) => key} />),",
         "    locker: shell('/police/evidence', '/police/evidence', <EvidenceLocker />),",
         "    certificate: shell('/police/certificate', '/police/certificate', <CertificatePage />),",
         "    gate: shell('/police/chargesheet', '/police/chargesheet', <GatePage />),",
@@ -541,11 +543,16 @@ const main = async () => {
         generator: ['BSA Section 63 Certificate Generator', 'Step 1: Device Information', 'IMEI'],
         gateDeep: ['Charge Sheet', 'Forensic Interlock', 'BNSS Sec 176(3)', 'Submission stays closed'],
         custodyDeep: ['Chain of Custody'],
+        integrity: ['integrity_check_title', 'This compares two hash values', 'integrity_run'],
     };
     // 'DEMO-' is left out on purpose: the hard-coded fixture ids this repo used to carry are worth
     // forbidding, but a page may legitimately print the word in a caveat, so that is checked where
     // the fixtures used to live rather than in rendered markup.
-    const retired = ['Court Ready', 'Captured / Uploaded', 'Sample Evidence', 'lorem'];
+    // These last three are D18's vocabulary - the labels the language-model fingerprint screen put on
+    // screen. They are retired for every render, not only the new screen's, because the point of the
+    // commit is that no wired screen gets to say them again.
+    const retired = ['Court Ready', 'Captured / Uploaded', 'Sample Evidence', 'lorem',
+        'Verified & Secure', 'Potential Tampering', 'Quantum Fingerprinting'];
     const missing = [];
     const stale = [];
     for (const [name, sentinels] of Object.entries(expect)) {
@@ -622,6 +629,15 @@ const main = async () => {
     // SDK, and proves the app survives with no key, invents nothing, and says which of the three
     // states it is in.
     // -----------------------------------------------------------------------
+    const walkTs = (dir, out = []) => {
+        for (const entry of fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
+            const rel = `${dir}/${entry.name}`;
+            if (entry.isDirectory()) walkTs(rel, out);
+            else if (/\.(ts|tsx)$/.test(entry.name)) out.push(rel);
+        }
+        return out;
+    };
+
     console.log('\n=== G. no API key must degrade the AI screens, not detonate them ===');
 
     const genaiStub = path.join(bundleDir, 'genai-stub.mjs');
@@ -653,6 +669,21 @@ const main = async () => {
         return outfile;
     };
 
+    // Same vehicle, any entry: the digest claim needs the lookup module and the hash function the
+    // screen actually calls, bundled the way the app bundles them.
+    const bundleTs = (entry, outName) => {
+        const outfile = path.join(bundleDir, outName);
+        try {
+            execFileSync(esbuildBin, [
+                entry, '--bundle', '--format=esm', '--platform=node', `--outfile=${outfile}`,
+            ], { cwd: repoRoot, stdio: 'pipe' });
+        } catch (err) {
+            console.error(`esbuild could not bundle ${entry}:\n${err.stderr ? err.stderr.toString() : err}`);
+            process.exit(2);
+        }
+        return outfile;
+    };
+
     // (1) empty key. The import itself is the regression: an exception here fails the claim.
     const noKey = await freshImport(bundleWithEnv('ai-no-key.mjs', { VITE_API_KEY: '' }));
     check(
@@ -663,13 +694,53 @@ const main = async () => {
         'The client is now built lazily on first use and `isGeminiConfigured()` is the public answer.'
     );
 
-    const fingerprint = await noKey.geminiService.generateQuantumFingerprint('charge sheet body', 'en');
+    const DIGEST_API = /quantumHash|generateQuantumFingerprint|QuantumFingerprintResult|anomalyDetector/;
+    const digestOffenders = walkTs('src')
+        // The nationals island keeps its own private copy of the old type; it dies with the purge
+        // (docs/PLAN_4a.md). Excluding it is stated here rather than quietly shrinking the scan.
+        .filter((f) => !f.startsWith('src/features/nationals/'))
+        .filter((f) => DIGEST_API.test(codeOnly(f)));
+    const lookup = await freshImport(bundleTs('src/shared/utils/integrityLookup.ts', 'integrity-lookup.mjs'));
+    const sha = await freshImport(bundleTs('src/core/trust/sha256.ts', 'sha256-module.mjs'));
+    // The record is shaped the way the Evidence Locker writes it (`sha256: hashResult.hash.toUpperCase()`,
+    // EvidenceLocker.tsx:212), because that is the thing the check has to match against: the journal
+    // keeps the exhibit digest upper-cased while sha256Hex returns lower-case, so an exact-string
+    // comparison would report a logged document as unlogged. Case-insensitive, and tested that way.
+    const logged = 'charge sheet body, as logged';
+    const loggedDigest = await sha.sha256Hex(logged);
+    const exhibitRecord = (digest) => [{
+        index: 7,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        leafDigest: '00'.repeat(32),
+        previousDigest: '00'.repeat(32),
+        data: { kind: 'EVIDENCE', id: 'EV-G1', fileName: 'charge-sheet.pdf', sha256: digest.toUpperCase() },
+    }];
+    const hit = lookup.findByDigest(exhibitRecord(loggedDigest), loggedDigest);
+    const anchoredLabel = lookup.integrityVerdict(hit, true).label;
+    const unanchoredLabel = lookup.integrityVerdict(hit, false).label;
+    const missLabel = lookup.integrityVerdict(
+        lookup.findByDigest(exhibitRecord(loggedDigest), 'ab'.repeat(32)), false, false
+    ).label;
+    const refusesGarbage = lookup.findByDigest(exhibitRecord(loggedDigest), 'the model said this was a hash') === null;
     check(
-        'No analysis returns no analysis - not a fabricated digest, not a tampering verdict',
-        fingerprint === null,
-        'The old fallback object put the sentence "Error generating hash: Fallback response due to API failure." ' +
-        'into `quantumHash` for a monospace block to render as a fingerprint, and asserted ' +
-        '`integrityStatus: "Potential Tampering Detected"`. Offline, that accused every document of tampering.'
+        'Nothing asks a language model for a digest, and the check that replaced it answers in three states',
+        digestOffenders.length === 0
+            && noKey.geminiService.generateQuantumFingerprint === undefined
+            && noKey.anomalyDetector === undefined
+            && isHex64(loggedDigest) && hit !== null && hit.recordIndex === 7
+            && anchoredLabel === 'FOUND (anchored at index 7)'
+            && unanchoredLabel === 'FOUND (not yet anchored)'
+            && missLabel === 'NOT IN JOURNAL'
+            && refusesGarbage,
+        digestOffenders.length
+            ? `the invented-digest API is still named in: ${digestOffenders.join(', ')}`
+            : 'the AI service exports no fingerprint method and no anomaly logger; the app\'s own sha256Hex over '
+              + 'logged bytes matches the journal record and yields exactly "FOUND (anchored at index 7)" / '
+              + '"FOUND (not yet anchored)" / "NOT IN JOURNAL"; a value that is not 64 hex characters is refused '
+              + 'instead of compared. This replaces a screen that asked gemini-2.5-pro to "generate a unique '
+              + 'quantum cryptographic hash", rendered the answer as a fingerprint, and offered an '
+              + 'integrityStatus of "Verified & Secure" or "Potential Tampering Detected" - which, offline, '
+              + 'accused every document in the tree.'
     );
 
     const prediction = await noKey.geminiService.predictCaseOutcome({ id: 'CASE-G' }, 'en');
@@ -696,14 +767,6 @@ const main = async () => {
         'means calling the API, and a test suite must not make network calls.'
     );
 
-    const walkTs = (dir, out = []) => {
-        for (const entry of fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-            const rel = `${dir}/${entry.name}`;
-            if (entry.isDirectory()) walkTs(rel, out);
-            else if (/\.(ts|tsx)$/.test(entry.name)) out.push(rel);
-        }
-        return out;
-    };
     // Deliberately NOT codeOnly() here: a suppression directive is a comment, so stripping comments
     // would make this claim unfalsifiable - it would report "clean" forever, which is the same failure
     // as grepping prose, pointed the other way. The cost is that prose in src/ must not spell the

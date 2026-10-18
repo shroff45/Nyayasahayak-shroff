@@ -38,7 +38,7 @@ const JusticeTimeline = React.lazy(() => import('./features/main/components/Just
 const LegalTechHub = React.lazy(() => import('./features/main/components/LegalTechHub'));
 const LitigantHappiness = React.lazy(() => import('./features/main/components/LitigantHappiness'));
 const History = React.lazy(() => import('./features/main/components/History'));
-const QuantumFingerprinting = React.lazy(() => import('./features/main/components/QuantumFingerprinting'));
+const DocumentIntegrityPage = React.lazy(() => import('./features/main/components/DocumentIntegrityPage'));
 
 // Judge-specific Components
 const DraftJudgmentPanel = React.lazy(() => import('./components/DraftJudgmentPanel'));
@@ -221,17 +221,16 @@ const HistoryWrapper: React.FC = () => {
     );
 };
 
-const QuantumFingerprintWrapper: React.FC = () => {
+const IntegrityCheckWrapper: React.FC = () => {
     const [language] = useState<Language>('en');
     const { t } = useLocalization(language);
-    const { selectedCase, logActivity } = useWorkspace();
+    const { logActivity } = useWorkspace();
 
     return (
         <React.Suspense fallback={<LoadingFallback />}>
-            <QuantumFingerprinting
+            <DocumentIntegrityPage
                 t={t}
-                selectedCase={selectedCase}
-                logActivity={logActivity}
+                onActivity={(details) => logActivity('DOCUMENT_VERIFIED', details)}
             />
         </React.Suspense>
     );
@@ -406,7 +405,7 @@ const App: React.FC = () => {
                                 <Route path="certificate/:evidenceId" element={<React.Suspense fallback={<LoadingFallback />}><Section63CertificatePage /></React.Suspense>} />
                                 <Route path="chargesheet" element={<React.Suspense fallback={<LoadingFallback />}><ChargeSheetGatePage /></React.Suspense>} />
                                 <Route path="chargesheet/:caseId/gate" element={<React.Suspense fallback={<LoadingFallback />}><ChargeSheetGatePage /></React.Suspense>} />
-                                <Route path="quantum" element={<QuantumFingerprintWrapper />} />
+                                <Route path="integrity" element={<IntegrityCheckWrapper />} />
                                 <Route path="patrol" element={<React.Suspense fallback={<LoadingFallback />}><PatrolMapPage /></React.Suspense>} />
                                 <Route path="roster" element={<React.Suspense fallback={<LoadingFallback />}><DutyRosterPage /></React.Suspense>} />
                                 <Route path="bot" element={<NyayaBotWrapper />} />
@@ -451,7 +450,7 @@ const App: React.FC = () => {
                                 <Route path="analysis" element={<DocumentAnalysisWrapper />} />
                                 <Route path="happiness" element={<LitigantHappinessWrapper />} />
                                 <Route path="history" element={<HistoryWrapper />} />
-                                <Route path="quantum" element={<QuantumFingerprintWrapper />} />
+                                <Route path="integrity" element={<IntegrityCheckWrapper />} />
                                 <Route path="transition" element={<React.Suspense fallback={<LoadingFallback />}><BNSTransitionPage /></React.Suspense>} />
                                 <Route path="pendency" element={<React.Suspense fallback={<LoadingFallback />}><PendencyMapPage /></React.Suspense>} />
                             </Route>

@@ -25,7 +25,7 @@ const AdminLayout: React.FC = () => {
         { path: '/admin/happiness', label: 'Litigant Happiness', icon: Smile },
         { path: '/admin/analysis', label: 'Document Analysis', icon: FileText },
         { path: '/admin/history', label: 'Activity Log', icon: History },
-        { path: '/admin/quantum', label: 'Ledger Verify', icon: Fingerprint },
+        { path: '/admin/integrity', label: 'Document Integrity', icon: Fingerprint },
         { path: '/admin/transition', label: 'BNS Transition', icon: TrendingUp },
         { path: '/admin/pendency', label: 'Pendency Map', icon: Map },
     ];

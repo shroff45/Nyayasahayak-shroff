@@ -1,12 +1,12 @@
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { geminiService, isGeminiConfigured, AI_NOT_CONFIGURED } from '../services/geminiService';
+import React, { useState, useCallback, useRef } from 'react';
+import { geminiService } from '../services/geminiService';
 import { legalParser } from '../services/legalParser';
-import { DocumentAnalysisResult, HistoryItem, QuantumFingerprintResult } from '../types';
+import { DocumentAnalysisResult, HistoryItem } from '../types';
 import { fileToBase64 } from '../lib/utils';
 import Spinner from './common/Spinner';
-import { Part } from '@google/genai';
-import { gsap } from 'gsap';
+
+
 import AnimatedPageWrapper from './common/AnimatedPageWrapper';
 
 interface DocumentAnalysisProps {
@@ -24,183 +24,7 @@ const getEntityColor = (type: string) => {
     }
 };
 
-const DocumentIntegrityView: React.FC<{ t: (key: string) => string; logActivity: (type: HistoryItem['type'], details: string) => void; }> = ({ t, logActivity }) => {
-    // Generation State
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [generationResult, setGenerationResult] = useState<QuantumFingerprintResult | null>(null);
-    const [statusText, setStatusText] = useState('');
-    const [contentToGenerate, setContentToGenerate] = useState('');
-    const [genFiles, setGenFiles] = useState<File[]>([]);
-
-    // Verification State
-    const [isVerifying, setIsVerifying] = useState(false);
-    const [hashToVerify, setHashToVerify] = useState('');
-    const [contentToVerify, setContentToVerify] = useState('');
-    const [verifyFiles, setVerifyFiles] = useState<File[]>([]);
-    const [verificationResult, setVerificationResult] = useState<'match' | 'mismatch' | 'error' | null>(null);
-
-    const statusRef = useRef(null);
-    const resultRef = useRef(null);
-    const genFileInputRef = useRef<HTMLInputElement>(null);
-    const verifyFileInputRef = useRef<HTMLInputElement>(null);
-
-    const handleGenFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { const files = e.target.files; if (files) setGenFiles(prev => [...prev, ...Array.from(files as FileList)]); };
-    const removeGenFile = (n: string) => setGenFiles(f => f.filter(x => x.name !== n));
-
-    const handleVerifyFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { const files = e.target.files; if (files) setVerifyFiles(prev => [...prev, ...Array.from(files as FileList)]); };
-    const removeVerifyFile = (n: string) => setVerifyFiles(f => f.filter(x => x.name !== n));
-
-    const handleGenerate = async () => {
-        if (!contentToGenerate && genFiles.length === 0) return;
-        setIsGenerating(true); setGenerationResult(null);
-
-        const statusTimeline = gsap.timeline({
-            onComplete: () => {
-                (async () => {
-                    try {
-                        let payload: string | Part[] = contentToGenerate;
-                        if (genFiles.length > 0) {
-                            const fileParts = await Promise.all(genFiles.map(async f => ({ inlineData: { mimeType: f.type, data: await fileToBase64(f) } })));
-                            if (contentToGenerate) {
-                                fileParts.push({ text: contentToGenerate } as any);
-                            }
-                            payload = fileParts;
-                        }
-
-                        const apiResult = await geminiService.generateQuantumFingerprint(payload, 'en');
-                        setGenerationResult(apiResult);
-                        logActivity('QUANTUM_FINGERPRINT_GENERATED', t('history_quantum_fingerprinted_generic'));
-                    } catch (error) { console.error(error); } finally { setIsGenerating(false); setStatusText(''); }
-                })();
-            }
-        });
-        ["Initializing quantum state...", "Entangling qubits...", "Finalizing report..."].forEach((status) => {
-            statusTimeline.to(statusRef.current, { duration: 0.1, onStart: () => setStatusText(status) }).to(statusRef.current, { duration: 1.5 });
-        });
-    };
-
-    const handleVerify = async () => {
-        if (!hashToVerify || (!contentToVerify && verifyFiles.length === 0)) return;
-        setIsVerifying(true); setVerificationResult(null);
-        try {
-            let payload: string | Part[] = contentToVerify;
-            if (verifyFiles.length > 0) {
-                const fileParts = await Promise.all(verifyFiles.map(async f => ({ inlineData: { mimeType: f.type, data: await fileToBase64(f) } })));
-                if (contentToVerify) {
-                    fileParts.push({ text: contentToVerify } as any);
-                }
-                payload = fileParts;
-            }
-
-            const result = await geminiService.generateQuantumFingerprint(payload, 'en');
-            if (result && result.quantumHash) {
-                const match = result.quantumHash === hashToVerify.trim();
-                setVerificationResult(match ? 'match' : 'mismatch');
-                logActivity('DOCUMENT_VERIFIED', t('history_document_verified').replace('{result}', match ? 'Match' : 'Mismatch'));
-            } else { setVerificationResult('error'); }
-        } catch (e) { setVerificationResult('error'); } finally { setIsVerifying(false); }
-    };
-
-    useEffect(() => { if (generationResult && resultRef.current) gsap.from(resultRef.current, { duration: 0.8, opacity: 0, y: 30, ease: 'power3.out' }); }, [generationResult]);
-
-    return (
-        <div className="grid lg:grid-cols-2 gap-8 p-4">
-            {!isGeminiConfigured() && (
-                <p role="status" className="lg:col-span-2 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
-                    {AI_NOT_CONFIGURED}
-                </p>
-            )}
-            {/* Generate Column */}
-            <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-gray-200 dark:border-gray-700 flex flex-col shadow-xl transition-all hover:shadow-2xl">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center justify-center gap-2">
-                    <i className="fas fa-fingerprint text-blue-500"></i> {t('generate_fingerprint')}
-                </h3>
-
-                {/* File Upload Area */}
-                <div onClick={() => genFileInputRef.current?.click()} className="border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 rounded-2xl p-8 mb-4 cursor-pointer transition-colors text-center group">
-                    <input ref={genFileInputRef} type="file" multiple onChange={handleGenFileChange} className="hidden" />
-                    <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
-                        <i className="fas fa-cloud-upload-alt text-2xl text-gray-400 group-hover:text-blue-500 transition-colors"></i>
-                    </div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('drag_and_drop_browse')}</p>
-                </div>
-                {genFiles.length > 0 && (
-                    <div className="mb-4 space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
-                        {genFiles.map(f => (
-                            <div key={f.name} className="flex justify-between bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl text-sm items-center border border-gray-100 dark:border-gray-600">
-                                <span className="text-gray-700 dark:text-gray-200 truncate">{f.name}</span>
-                                <button onClick={(e) => { e.stopPropagation(); removeGenFile(f.name); }} className="text-gray-400 hover:text-red-500 transition-colors"><i className="fas fa-times"></i></button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                <textarea value={contentToGenerate} onChange={(e) => setContentToGenerate(e.target.value)} rows={4} className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/50 resize-none text-sm mb-4 placeholder-gray-400 transition-all" placeholder={t('paste_content_for_fingerprint')} />
-
-                <button onClick={handleGenerate} disabled={isGenerating || (!contentToGenerate && genFiles.length === 0)} className="w-full py-3.5 rounded-xl font-bold text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:opacity-50 disabled:cursor-not-allowed mt-auto shadow-lg shadow-blue-500/20 transition-all transform hover:-translate-y-0.5">
-                    {isGenerating ? <Spinner /> : t('generate_fingerprint')}
-                </button>
-
-                {isGenerating && <p ref={statusRef} className="mt-4 text-center text-blue-600 dark:text-blue-400 font-mono text-sm animate-pulse">{statusText}</p>}
-                {generationResult && (
-                    <div ref={resultRef} className="mt-6 p-6 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-inner">
-                        <label className="text-xs font-bold text-gray-500 uppercase block mb-2 tracking-wider">{t('quantum_hash')}</label>
-                        <div className="text-xs text-blue-600 dark:text-blue-400 font-mono break-all leading-relaxed">{generationResult.quantumHash}</div>
-                    </div>
-                )}
-            </div>
-
-            {/* Verify Column */}
-            <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-gray-200 dark:border-gray-700 flex flex-col shadow-xl transition-all hover:shadow-2xl">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center flex items-center justify-center gap-2">
-                    <i className="fas fa-shield-check text-emerald-500"></i> {t('verify_integrity_title')}
-                </h3>
-                <div className="space-y-4 flex-grow">
-                    <input value={hashToVerify} onChange={(e) => setHashToVerify(e.target.value)} className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/50 font-mono text-sm placeholder-gray-400 transition-all" placeholder={t('paste_hash_placeholder')} />
-
-                    {/* File Upload Area */}
-                    <div onClick={() => verifyFileInputRef.current?.click()} className="border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 rounded-2xl p-6 cursor-pointer transition-colors text-center group">
-                        <input ref={verifyFileInputRef} type="file" multiple onChange={handleVerifyFileChange} className="hidden" />
-                        <i className="fas fa-cloud-upload-alt text-2xl text-gray-400 group-hover:text-emerald-500 mb-2 transition-colors"></i>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">{t('drag_and_drop_browse')}</p>
-                    </div>
-                    {verifyFiles.length > 0 && (
-                        <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
-                            {verifyFiles.map(f => (
-                                <div key={f.name} className="flex justify-between bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl text-sm items-center border border-gray-100 dark:border-gray-600">
-                                    <span className="text-gray-700 dark:text-gray-200 truncate">{f.name}</span>
-                                    <button onClick={(e) => { e.stopPropagation(); removeVerifyFile(f.name); }} className="text-gray-400 hover:text-red-500 transition-colors"><i className="fas fa-times"></i></button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    <textarea value={contentToVerify} onChange={(e) => setContentToVerify(e.target.value)} rows={3} className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none text-sm placeholder-gray-400 transition-all" placeholder={t('paste_content_placeholder')} />
-                </div>
-
-                <button onClick={handleVerify} disabled={isVerifying || !hashToVerify || (!contentToVerify && verifyFiles.length === 0)} className="w-full mt-6 py-3.5 rounded-xl font-bold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20 transition-all transform hover:-translate-y-0.5">
-                    {isVerifying ? <Spinner /> : t('verify_button')}
-                </button>
-
-                {verificationResult && (
-                    <div className={`mt-6 p-4 rounded-xl text-center font-bold border ${verificationResult === 'match'
-                        ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30'
-                        : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-100 dark:border-red-900/30'
-                        }`}>
-                        {verificationResult === 'match' ? (
-                            <><i className="fas fa-check-circle mr-2"></i> {t('verification_match')}</>
-                        ) : verificationResult === 'mismatch' ? (
-                            <><i className="fas fa-times-circle mr-2"></i> {t('verification_mismatch')}</>
-                        ) : t('verification_error')}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
 const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({ t, logActivity }) => {
-    const [mode, setMode] = useState<'analysis' | 'integrity'>('analysis');
     const [files, setFiles] = useState<File[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
@@ -232,15 +56,7 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({ t, logActivity }) =
             <div className="max-w-7xl mx-auto h-full flex flex-col">
                 <h2 className="text-3xl font-bold mb-8 text-center text-gray-900 dark:text-white tracking-tight">{t('tab_document_analysis')}</h2>
 
-                <div className="flex justify-center mb-8">
-                    <div className="bg-white dark:bg-gray-800 p-1.5 rounded-2xl inline-flex border border-gray-200 dark:border-gray-700 shadow-sm">
-                        <button onClick={() => setMode('analysis')} className={`px-8 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${mode === 'analysis' ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 shadow-md' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>{t('doc_analysis_mode_analysis')}</button>
-                        <button onClick={() => setMode('integrity')} className={`px-8 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${mode === 'integrity' ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 shadow-md' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>{t('doc_analysis_mode_integrity')}</button>
-                    </div>
-                </div>
-
                 <div className="flex-grow overflow-y-auto custom-scrollbar">
-                    {mode === 'analysis' ? (
                         <div className="space-y-8 p-4">
                             <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl rounded-3xl p-10 text-center border border-gray-200 dark:border-gray-700 shadow-xl transition-all">
                                 <div
@@ -327,9 +143,6 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({ t, logActivity }) =
                                 </div>
                             )}
                         </div>
-                    ) : (
-                        <DocumentIntegrityView t={t} logActivity={logActivity} />
-                    )}
                 </div>
             </div>
         </AnimatedPageWrapper>

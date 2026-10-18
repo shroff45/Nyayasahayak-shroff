@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse, Part } from "@google/genai";
-import { PredictionResult, Case, DocumentAnalysisResult, ChatMessage, QuantumFingerprintResult } from "../types";
+import { PredictionResult, Case, DocumentAnalysisResult, ChatMessage } from "../types";
 import { withErrorRecovery } from "../lib/withErrorRecovery";
 
 /**
@@ -191,78 +191,6 @@ const chatWithNyayabotInternal = async (message: string, ragParts?: Part[], hist
     return response;
 };
 
-const generateQuantumFingerprintInternal = async (content: string | Part[], language: string): Promise<QuantumFingerprintResult> => {
-    const langMap: { [key: string]: string } = {
-        en: 'English',
-        hi: 'Hindi',
-        ta: 'Tamil',
-        te: 'Telugu',
-        bn: 'Bengali',
-        mr: 'Marathi',
-        gu: 'Gujarati',
-        kn: 'Kannada',
-        ml: 'Malayalam',
-        pa: 'Punjabi',
-        or: 'Odia',
-        sa: 'Sanskrit',
-        ur: 'Urdu',
-        as: 'Assamese',
-        mai: 'Maithili',
-        sat: 'Santali',
-        ks: 'Kashmiri',
-        kok: 'Konkani',
-        sd: 'Sindhi',
-        doi: 'Dogri',
-        mni: 'Manipuri',
-        brx: 'Bodo',
-        ne: 'Nepali'
-    };
-    const targetLanguage = langMap[language as keyof typeof langMap] || 'English';
-
-    let parts: Part[] = [];
-    if (typeof content === 'string') {
-        parts.push({ text: `Document Content: "${content}"` });
-    } else {
-        parts = content;
-    }
-
-    parts.push({ text: `Act as a quantum security analysis system. Based on the provided document content (text or files), generate a unique quantum cryptographic hash and a data integrity report. The content is considered a legal document, and the report should verify its integrity. The entire JSON response must be in ${targetLanguage}.` });
-
-    const response = await gemini().models.generateContent({
-        model: "gemini-2.5-pro",
-        contents: { parts: parts },
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    quantumHash: {
-                        type: Type.STRING,
-                        description: "A unique, long, hexadecimal-like string representing the document's quantum fingerprint. Should be highly complex."
-                    },
-                    integrityStatus: {
-                        type: Type.STRING,
-                        enum: ['Verified & Secure', 'Potential Tampering Detected'],
-                        description: "The verification status of the document."
-                    },
-                    anomaliesDetected: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                        description: "A list of any detected anomalies or inconsistencies. If none, this should be an empty array."
-                    },
-                    verificationTimestamp: {
-                        type: Type.STRING,
-                        description: "The ISO 8601 timestamp of when the verification was performed."
-                    }
-                },
-                required: ["quantumHash", "integrityStatus", "anomaliesDetected", "verificationTimestamp"]
-            },
-        },
-    });
-
-    return JSON.parse(response.text ? response.text.trim() : "{}");
-};
-
 
 /** What to tell the user when no analysis exists. One string, so the five screens cannot drift. */
 export const AI_NOT_CONFIGURED =
@@ -320,11 +248,6 @@ export const geminiService = {
         if (!isGeminiConfigured()) throw new Error(AI_NOT_CONFIGURED);
         return chatWithNyayabotInternal(message, ragParts, history);
     },
-    // `null` means "no analysis was produced". Callers must not turn that into a pass or a failure.
-    generateQuantumFingerprint: (content: string | Part[], language: string): Promise<QuantumFingerprintResult | null> =>
-        isGeminiConfigured()
-            ? withErrorRecovery<QuantumFingerprintResult | null>(() => generateQuantumFingerprintInternal(content, language), null)
-            : Promise.resolve(null),
     transcribeAudio: async (audioPart: Part) => {
         const response = await gemini().models.generateContent({
             model: 'gemini-2.5-pro',
@@ -386,12 +309,5 @@ export const geminiService = {
             contents: { parts: promptParts }
         });
         return response.text || '';
-    }
-};
-
-// Simple Anomaly Detector (logs to console)
-export const anomalyDetector = {
-    logEvent: (message: string, data: any) => {
-        console.warn(`[ANOMALY DETECTED] ${message}`, data);
     }
 };
