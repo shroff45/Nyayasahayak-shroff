@@ -66,6 +66,25 @@ async function signOut(page: Page) {
 }
 
 /**
+ * Where the page says it is, in the page's own words.
+ *
+ * `expect(locator, message)` prints the message into the failure, and a failure is the one thing that
+ * survives every reporting channel - including the Checks API annotations a restricted environment can
+ * read. Three CI cycles went by on "element(s) not found", which is identical for a stale selector, a
+ * bounced route and a blank React tree; an assertion that quotes the URL and the first line the user
+ * would have seen tells all three apart in one run.
+ */
+const whereAmI = async (page: Page) => {
+    let body = '';
+    try {
+        body = await page.evaluate(() => document.body?.innerText ?? '');
+    } catch {
+        body = '<no page>';
+    }
+    return `page says: url=${page.url()} body=\"${body.replace(/\s+/g, ' ').slice(0, 300)}\"`;
+};
+
+/**
  * A blind-authored selector should cost one log line, not one 8-minute CI round trip per guess.
  *
  * The first run of this journey failed on `#complaint-text`, and the report said only "waiting for
@@ -127,15 +146,20 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
         // app: the intake opens in voice mode (`inputMode` defaults to 'voice'), so the text box is
         // behind a toggle. Pressing it is not scaffolding - for a citizen who can type but not speak,
         // it is the first action the screen asks for.
-        // Assert the toggle is on screen before assuming it can be clicked: the timeout that started
-        // this exchange gave no clue whether the page was wrong or the locator was.
-        const textMode = page.getByRole('button', { name: 'Type', exact: true });
-        await expect(textMode, 'the intake should offer a text mode next to its voice mode').toBeVisible({ timeout: 20_000 });
-        await textMode.click();
+        // Match these controls on their text content, not on a computed accessible name: CI's run of
+        // `getByRole('button', { name: 'Type' })` found nothing while `t('complaint_type')` resolves to
+        // \"Type\" in node, which means either the name computation or the page disagrees with me. Text
+        // content is the narrower claim, and the assertion below says which page I actually got.
+        const modeToggle = page.locator('button').filter({ hasText: /^Type$/ });
+        await expect(
+            page.locator('button').filter({ hasText: /^(Voice|Type)$/ }).first(),
+            `the intake should be on screen with its Voice/Type toggle - ${await whereAmI(page)}`
+        ).toBeVisible({ timeout: 20_000 });
+        if (await modeToggle.count()) await modeToggle.first().click();
         const textarea = page.locator('#complaint-text');
         await expect(textarea, 'the text mode of the intake must be reachable').toBeVisible({ timeout: 15_000 });
         await textarea.fill(COMPLAINT);
-        await page.getByRole('button', { name: 'Read my text' }).click();
+        await page.locator('button').filter({ hasText: /^Read my text$/ }).first().click();
 
         // The heading is the claim under test: it used to read "Review AI-Extracted Details".
         await expect(page.getByRole('heading', { name: 'Review what the four rules found' })).toBeVisible();
@@ -143,7 +167,7 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
         // `respondent` and the CNR are deliberately left blank: the app must not invent a name for the
         // accused, and a CNR is a number a police station assigns, so an empty one has to stay empty.
 
-        await page.getByRole('button', { name: 'Save to Ledger' }).click();
+        await page.locator('button').filter({ hasText: /^Save to Ledger$/ }).first().click();
 
         await expect(page.getByRole('heading', { name: 'Complaint Filed Successfully!' })).toBeVisible();
         const receipt = page.locator('dl');
