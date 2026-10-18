@@ -9,7 +9,8 @@
  * esbuild already in node_modules, installs a localStorage shim, and exercises the shipped
  * module - the same code path the Evidence Locker and the judge's verifier call.
  *
- * Twelve checks, in the same five groups the audit raised:
+ * Thirteen checks: the twelve groups the audit raised, plus one that keeps the two SHA-256
+ * implementations from splitting apart again:
  *   A zero-knowledge / tamper detection     B persistence, attribution, offline verification
  *   C "post-quantum"                        D the merkleRoot field
  *   E how many ledger copies exist and whether they agree
@@ -312,6 +313,23 @@ const main = async () => {
         'The digest is plain SHA-256 over a canonical record - no constant salt, no double-hash',
         plainHash.ok,
         plainHash.detail + '. Two independent SHA-256 implementations agreeing is the point; the old scheme was SHA256(SHA256(data) || a hard-coded "KYBER-1024-ENCAPSULATED-SALT"), which adds zero bits.'
+    );
+
+    const singleHasher = await (async () => {
+        const evidencePath = [
+            'src/core/services/evidenceHasher.ts',
+            'src/services/akhandLedger.ts',
+            'src/core/trust/sha256.ts',
+            'src/core/trust/ledger.ts',
+        ].map(codeOnly).join('\n');
+        const users = execSync(`grep -rln "crypto-js" src --include=*.ts --include=*.tsx || true`, { cwd: repoRoot })
+            .toString().trim().split('\n').filter(Boolean);
+        return { ok: !/crypto-js/.test(evidencePath), users };
+    })();
+    check(
+        'One SHA-256 implementation on the evidence path, not one per screen',
+        singleHasher.ok,
+        `The officer hashed exhibits with crypto-js while the ledger verified with WebCrypto - two implementations of the same promise, so a difference in either one would read as tampering. evidenceHasher now calls the trust layer's own function. Files still importing crypto-js: ${singleHasher.users.join(', ') || 'none'} (the session HMAC in AuthContext is a known, documented remainder and is not on the evidence path).`
     );
 
     console.log('\n=== D. "merkleRoot" field on every block ===');

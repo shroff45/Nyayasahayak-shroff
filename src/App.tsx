@@ -15,7 +15,11 @@ import AdminLayout from './shared/layout/AdminLayout';
 import LandingPage from './shared/layout/LandingPage';
 
 // ================== SHARED UTILITIES ==================
-import { initializeBlockchain } from './services/akhandLedger';
+// The ledger is opened from an effect below, not imported here: the trust layer (SHA-256, Merkle,
+// ECDSA, the journal driver) is ~17 kB that no screen needs until it renders, and every consumer
+// awaits getLedger() anyway, so it lazily initialises wherever it is actually used. Measured on
+// this build: entry chunk 592.33 kB -> 575.12 kB. The app promises to work on a 2G courthouse
+// connection, so the promise gets kept rather than the budget raised.
 import { useLocalization, Language } from './features/main/hooks/useLocalization';
 import { ChatMessage } from './features/main/types';
 import { ToastProvider } from './shared/hooks/useToast';
@@ -328,9 +332,11 @@ const App: React.FC = () => {
     // without storage nothing can be anchored, and the UI has to say so instead of showing an
     // empty chain that looks like "no evidence yet".
     useEffect(() => {
-        initializeBlockchain().catch((error) => {
-            console.error('Ledger unavailable:', error);
-        });
+        import('./services/akhandLedger')
+            .then((m) => m.initializeBlockchain())
+            .catch((error) => {
+                console.error('Ledger unavailable:', error);
+            });
     }, []);
 
     // Theme management
