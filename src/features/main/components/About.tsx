@@ -7,6 +7,7 @@ import AboutStats from './about/AboutStats';
 import AboutRoles from './about/AboutRoles';
 import AboutTech from './about/AboutTech';
 import AboutCTA from './about/AboutCTA';
+import { Link } from 'react-router-dom';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { trackAboutEvent } from '../../../services/analytics';
 
@@ -14,12 +15,23 @@ gsap.registerPlugin(ScrollTrigger);
 
 interface AboutProps {
     t: (key: string) => string;
+    /**
+     * Where "Get Started" goes. The page has to hand this over: the CTA used to call an
+     * optional prop that nothing in the tree ever passed, so the button on the About page did
+     * nothing but log an analytics event to the console.
+     */
+    onGetStarted?: () => void;
 }
 
 /**
  * About - Premium landing page showcasing NyayaSahayak
  * 
  * Narrative Arc: Chaos → Clarity → Trust
+ *
+ * Published at /about from src/App.tsx (the route is public on purpose: this page is the one place
+ * the project states what it is, and it has to be readable before someone picks a role). Every
+ * number and mechanism claim on it is checked by tools/ledger_repro.cjs group F, which renders this
+ * component and fails if a retired phrase comes back.
  * 
  * - Hero: Establishes the problem (5 crore pending cases)
  * - Features: Shows the AI-powered solution
@@ -39,7 +51,7 @@ interface AboutProps {
  * - Reduced motion path for accessibility
  * - Progressive animation loading via ScrollTrigger
  */
-const About: React.FC<AboutProps> = ({ t }) => {
+const About: React.FC<AboutProps> = ({ t, onGetStarted }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const prefersReducedMotion = useReducedMotion();
     const scrollDepthsTracked = useRef<Set<number>>(new Set());
@@ -85,6 +97,13 @@ const About: React.FC<AboutProps> = ({ t }) => {
             ref={containerRef}
             className="about-page min-h-screen"
         >
+            {/* Reached from the persona sidebars but rendered outside them, so it needs its own way
+                back - otherwise the page is a dead end with a browser button as its only exit. */}
+            <header className="max-w-6xl mx-auto px-4 py-4">
+                <Link to="/" className="text-sm text-[var(--mid)] hover:text-[var(--hi)] underline underline-offset-4">
+                    Back to the role picker
+                </Link>
+            </header>
             {/* Hero Section - CHAOS */}
             <AboutHero
                 t={t}
@@ -104,7 +123,7 @@ const About: React.FC<AboutProps> = ({ t }) => {
             <AboutTech t={t} />
 
             {/* CTA Section - RESOLUTION */}
-            <AboutCTA t={t} />
+            <AboutCTA t={t} onGetStarted={onGetStarted} />
         </div>
     );
 };

@@ -83,18 +83,19 @@ const AboutCTA: React.FC<AboutCTAProps> = ({ t: _t, onGetStarted }) => {
                             id="cta-title"
                             className="title text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-[var(--hi)]"
                         >
-                            Ready to Transform<br className="hidden sm:block" /> Justice Delivery?
+                            Read the code, then<br className="hidden sm:block" /> decide.
                         </h2>
 
                         {/* Subheadline */}
                         <p className="text-xl md:text-2xl text-[var(--mid)] mb-8 max-w-2xl mx-auto">
-                            Built for India. Designed for tomorrow.
+                            A hackathon build for Indian courts, with its limits printed on it.
                         </p>
 
                         {/* Supporting text */}
                         <p className="text-[var(--low)] mb-10 max-w-xl mx-auto leading-relaxed">
-                            Join thousands of judicial officers, police personnel, and citizens
-                            who are already experiencing faster, more accessible justice.
+                            One citizen filing, one officer logging an exhibit, one registrar checking a
+                            document has not changed. Nobody's case data has to be entrusted to a server
+                            for any of that to work.
                         </p>
 
                         {/* CTA Button */}
@@ -112,15 +113,15 @@ const AboutCTA: React.FC<AboutCTAProps> = ({ t: _t, onGetStarted }) => {
                         <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-[var(--faint)]">
                             <span className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-[var(--success-600)]" aria-hidden="true" />
-                                Free to start
+                                No account, no billing
                             </span>
                             <span className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-[var(--success-600)]" aria-hidden="true" />
-                                22 languages supported
+                                23 interface languages
                             </span>
                             <span className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-[var(--success-600)]" aria-hidden="true" />
-                                Court-grade security
+                                Integrity checks run offline
                             </span>
                         </div>
                     </div>

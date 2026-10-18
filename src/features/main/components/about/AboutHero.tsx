@@ -65,11 +65,6 @@ const AboutHero: React.FC<AboutHeroProps> = ({ t, onExploreClick }) => {
         onExploreClick?.();
     };
 
-    const handleSignInClick = () => {
-        trackAboutEvent({ type: 'cta_click', button: 'sign_in' });
-        // Could trigger sign in modal or navigate
-    };
-
     return (
         <section
             ref={heroRef}
@@ -86,7 +81,7 @@ const AboutHero: React.FC<AboutHeroProps> = ({ t, onExploreClick }) => {
                 {/* Badge */}
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 mb-6 rounded-full glass-quiet text-sm text-[var(--mid)]">
                     <span className="w-2 h-2 rounded-full bg-[var(--accent-500)] animate-pulse" aria-hidden="true" />
-                    <span>AI-Powered Judicial Platform</span>
+                    <span>AI-assisted interface. No backend, nothing uploaded.</span>
                 </div>
 
                 {/* Title */}
@@ -112,9 +107,12 @@ const AboutHero: React.FC<AboutHeroProps> = ({ t, onExploreClick }) => {
                     className="text-base sm:text-lg md:text-xl text-[var(--low)] max-w-2xl mx-auto mb-10 leading-relaxed"
                 >
                     <strong className="text-[var(--hi)]">5 crore cases pending.</strong>{' '}
-                    Every delay is justice denied. NyayaSahayak brings AI-assisted triage,
-                    translation in <strong className="text-[var(--primary-500)]">22 Indian languages</strong>,
-                    and intelligent drafting to accelerate the delivery of justice.
+                    Every delay is justice denied. The pending figure is the National Judicial Data
+                    Grid's own count of under-trial and pending matters, not a NyayaSahayak number -
+                    what this build does is the paperwork around one case at a time: AI-assisted
+                    triage, an interface in
+                    <strong className="text-[var(--primary-500)]"> 23 languages</strong>,
+                    and drafting that a person still has to read.
                 </p>
 
                 {/* CTAs */}
@@ -131,15 +129,7 @@ const AboutHero: React.FC<AboutHeroProps> = ({ t, onExploreClick }) => {
                         <ChevronDown className="w-4 h-4 ml-1" aria-hidden="true" />
                     </button>
 
-                    <button
-                        onClick={handleSignInClick}
-                        className="btn px-8 py-3 text-base font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-[var(--stroke)] focus:ring-offset-2 focus:ring-offset-[var(--bg0)]"
-                        aria-label="Sign in to NyayaSahayak"
-                    >
-                        Sign In
-                        <span aria-hidden="true">→</span>
-                    </button>
-                </div>
+                                    </div>
             </div>
 
             {/* Scroll indicator */}

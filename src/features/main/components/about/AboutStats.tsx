@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { Languages, Building2, Users, TrendingUp } from 'lucide-react';
+import { Languages, Hash, HardDrive, BookOpen } from 'lucide-react';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -16,6 +16,8 @@ interface Stat {
     value: number;
     suffix: string;
     label: string;
+    /** How a reader checks the number. Required on purpose: an uncheckable one does not get in. */
+    how: string;
     color: string;
 }
 
@@ -32,37 +34,46 @@ const AboutStats: React.FC<AboutStatsProps> = ({ t: _t }) => {
     const prefersReducedMotion = useReducedMotion();
     const [hasAnimated, setHasAnimated] = useState(false);
 
+    // Four numbers, all of them about this repository rather than about anyone's cases, and
+    // each one carrying the command or file that proves it. The version this replaces showed
+    // 5,000,000+ Cases Analyzed, 2,500+ Courts Connected and 98% User Satisfaction under a
+    // comment admitting the statistics were "simulated for design purposes" - three counters
+    // animating up to numbers nobody could check, next to a disclaimer saying exactly that.
     const stats: Stat[] = [
-        {
-            id: 'cases',
-            icon: <TrendingUp className="w-6 h-6" aria-hidden="true" />,
-            value: 5000000,
-            suffix: '+',
-            label: 'Cases Analyzed',
-            color: 'var(--primary-500)'
-        },
         {
             id: 'languages',
             icon: <Languages className="w-6 h-6" aria-hidden="true" />,
-            value: 22,
+            value: 23,
             suffix: '',
-            label: 'Indian Languages',
+            label: 'Interface languages, English fallback',
+            how: 'grep -c "^export const .*Translations" src/features/main/constants/localization.ts - every table after the first is typed against English, so a key missing from one is a build failure, not a blank screen. The switcher that uses them is in the citizen layout; several admin routes are pinned to English by their wrapper, and this page is one of them.',
             color: 'var(--secondary-500)'
         },
         {
-            id: 'courts',
-            icon: <Building2 className="w-6 h-6" aria-hidden="true" />,
-            value: 2500,
-            suffix: '+',
-            label: 'Courts Connected',
+            id: 'requests',
+            icon: <Hash className="w-6 h-6" aria-hidden="true" />,
+            value: 0,
+            suffix: '',
+            label: 'Requests made by the integrity path',
+            how: 'sha256.ts, merkle.ts, store.ts, ledger.ts and akhandLedger.ts contain no fetch, no XHR and no beacon. The digest, the journal and the certificate are produced in this tab, offline.',
+            color: 'var(--primary-500)'
+        },
+        {
+            id: 'maxbytes',
+            icon: <HardDrive className="w-6 h-6" aria-hidden="true" />,
+            value: 64,
+            suffix: ' MB',
+            label: 'Largest file the checker will read',
+            how: 'MAX_INLINE_BYTES in src/core/trust/sha256.ts. A bigger file is refused outright - it is never sampled, hashed partially, or quietly skipped.',
             color: 'var(--accent-500)'
         },
         {
-            id: 'satisfaction',
-            icon: <Users className="w-6 h-6" aria-hidden="true" />,
-            value: 98,
-            suffix: '%',
-            label: 'User Satisfaction',
+            id: 'claims',
+            icon: <BookOpen className="w-6 h-6" aria-hidden="true" />,
+            value: 25,
+            suffix: '',
+            label: 'Claims the repo checks about itself',
+            how: 'node tools/ledger_repro.cjs - it mounts the real screens, reads the real ledger, and fails when a sentence in this app stops matching its code.',
             color: 'var(--success-600)'
         }
     ];
@@ -82,18 +93,6 @@ const AboutStats: React.FC<AboutStatsProps> = ({ t: _t }) => {
         return () => ctx.revert();
     }, []);
 
-    // Format large numbers in Indian style (lakhs/crores)
-    const formatIndianNumber = (num: number): string => {
-        if (num >= 10000000) {
-            return (num / 10000000).toFixed(0) + ' Cr';
-        } else if (num >= 100000) {
-            return (num / 100000).toFixed(0) + ' L';
-        } else if (num >= 1000) {
-            return (num / 1000).toFixed(0) + 'K';
-        }
-        return num.toString();
-    };
-
     return (
         <section
             ref={sectionRef}
@@ -112,16 +111,17 @@ const AboutStats: React.FC<AboutStatsProps> = ({ t: _t }) => {
             <div className="max-w-6xl mx-auto">
                 {/* Section Header */}
                 <div className="text-center mb-16">
-                    <span className="chip mb-4 inline-flex">Our Impact</span>
+                    <span className="chip mb-4 inline-flex">Local by design</span>
                     <h2
                         id="stats-title"
                         className="title text-3xl sm:text-4xl md:text-5xl font-bold mb-4 text-[var(--hi)]"
                     >
-                        Numbers That Speak
+                        Four Numbers You Can Check
                     </h2>
                     <p className="text-lg text-[var(--mid)] max-w-2xl mx-auto">
-                        Proven at scale across India's judicial ecosystem —
-                        from High Courts to district benches, in every language that matters.
+                        There is no analytics pipe that could know how many cases this software has
+                        touched, so nothing on this page pretends to. Each number below describes this
+                        codebase, and the line under it says where to verify it.
                     </p>
                 </div>
 
@@ -133,7 +133,6 @@ const AboutStats: React.FC<AboutStatsProps> = ({ t: _t }) => {
                             stat={stat}
                             hasAnimated={hasAnimated}
                             prefersReducedMotion={prefersReducedMotion}
-                            formatNumber={stat.id === 'cases' ? formatIndianNumber : undefined}
                             delay={index * 0.1}
                         />
                     ))}
@@ -141,7 +140,8 @@ const AboutStats: React.FC<AboutStatsProps> = ({ t: _t }) => {
 
                 {/* Disclaimer */}
                 <p className="text-center text-xs text-[var(--faint)] mt-8 max-w-md mx-auto">
-                    Statistics shown are illustrative. Actual metrics vary by deployment.
+                    If a future build puts a number on this page that nobody can check, the harness
+                    in tools/ledger_repro.cjs is what fails - it renders this section.
                 </p>
             </div>
         </section>
@@ -240,6 +240,8 @@ const StatCard: React.FC<StatCardProps> = ({
 
             {/* Label */}
             <p className="text-sm text-[var(--mid)]">{stat.label}</p>
+            {/* The check, printed on the card: a number nobody can verify does not belong on this page. */}
+            <p className="mt-3 text-xs leading-relaxed text-[var(--faint)] break-words">{stat.how}</p>
         </div>
     );
 };

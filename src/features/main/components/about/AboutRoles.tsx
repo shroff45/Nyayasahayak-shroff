@@ -56,7 +56,7 @@ const AboutRoles: React.FC<AboutRolesProps> = ({ t: _t, onRoleClick }) => {
             features: [
                 'Intelligent FIR Filing',
                 'BNS Section Navigator',
-                'Automated Summons Generation',
+                'Evidence hash + Sec 63 certificate',
                 'Evidence Chain Tracking'
             ],
             gradient: 'from-[var(--secondary-700)] to-[var(--secondary-500)]',

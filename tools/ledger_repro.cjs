@@ -468,6 +468,8 @@ const main = async () => {
         "import GatePage from '../src/personas/police/pages/ChargeSheetGatePage';",
         "import CustodyPage from '../src/personas/judge/pages/CaseChainOfCustodyPage';",
         "import CertificateWizard from '../src/personas/police/components/Section63CertificateGenerator';",
+        "import IntegrityPage from '../src/features/main/components/DocumentIntegrityPage';",
+        "import About from '../src/features/main/components/About';",
         "",
         "const shell = (route: string, pattern: string, node: React.ReactNode) => renderToStaticMarkup(",
         "    <AuthProvider><AppSettingsProvider><WorkspaceProvider><ToastProvider>",
@@ -478,6 +480,8 @@ const main = async () => {
         ");",
         "",
         "export const screens = () => ({",
+        "    integrity: shell('/admin/integrity', '/admin/integrity', <IntegrityPage t={(key: string) => key} />),",
+        "    about: shell('/about', '/about', <About t={(key: string) => key} />),",
         "    locker: shell('/police/evidence', '/police/evidence', <EvidenceLocker />),",
         "    certificate: shell('/police/certificate', '/police/certificate', <CertificatePage />),",
         "    gate: shell('/police/chargesheet', '/police/chargesheet', <GatePage />),",
@@ -541,11 +545,28 @@ const main = async () => {
         generator: ['BSA Section 63 Certificate Generator', 'Step 1: Device Information', 'IMEI'],
         gateDeep: ['Charge Sheet', 'Forensic Interlock', 'BNSS Sec 176(3)', 'Submission stays closed'],
         custodyDeep: ['Chain of Custody'],
+        integrity: ['integrity_check_title', 'This compares two hash values', 'integrity_run'],
+        // Q9: the About page is where this project describes itself, so it is rendered here rather
+        // than trusted. These three sentinels are the replacement for the counters the page used to
+        // run - 5,000,000+ Cases Analyzed, 2,500+ Courts Connected, 98% User Satisfaction - each one
+        // animating up to a figure nothing in the repository could know, under a source comment
+        // admitting the statistics were "simulated for design purposes". What is on the page now is
+        // checkable from a command line, which is why the sentinel is the heading that says so.
+        about: ['Four Numbers You Can Check', 'Interface languages, English fallback', 'Local by design'],
     };
     // 'DEMO-' is left out on purpose: the hard-coded fixture ids this repo used to carry are worth
     // forbidding, but a page may legitimately print the word in a caveat, so that is checked where
     // the fixtures used to live rather than in rendered markup.
-    const retired = ['Court Ready', 'Captured / Uploaded', 'Sample Evidence', 'lorem'];
+    // These last three are D18's vocabulary - the labels the language-model fingerprint screen put on
+    // screen. They are retired for every render, not only the new screen's, because the point of the
+    // commit is that no wired screen gets to say them again.
+    // D19's vocabulary, retired alongside D18's: every one of these was a live sentence in a screen
+    // this commit publishes or links to. They are checked against every render, not only About's, so
+    // a number cannot move to another page and come back into style.
+    const retired = ['Court Ready', 'Captured / Uploaded', 'Sample Evidence', 'lorem',
+        'Verified & Secure', 'Potential Tampering', 'Quantum Fingerprinting',
+        'Cases Analyzed', 'Courts Connected', 'User Satisfaction', 'Join thousands',
+        'Court-grade security', 'End-to-End Encrypted', '22 languages supported'];
     const missing = [];
     const stale = [];
     for (const [name, sentinels] of Object.entries(expect)) {
@@ -559,8 +580,8 @@ const main = async () => {
         !renderFailure && missing.length === 0 && stale.length === 0,
         renderFailure
             ? `the screens could not even be rendered:\n             ${renderFailure}`
-            : `${Object.keys(expect).length} renders (four top-level routes plus three deep links with a path param) through AuthProvider/WorkspaceProvider/ToastProvider, the same stack main.tsx installs. `
-              + `Each shows its own empty-journal copy - "Exhibits in the ledger (0)", "Reading the journal" - because there is nothing in the store yet, which is the opposite of the demo data these pages used to carry. `
+            : `${Object.keys(expect).length} renders (six top-level routes, three deep links with a path param, and the wizard mounted directly) through AuthProvider/WorkspaceProvider/ToastProvider, the same stack main.tsx installs. `
+              + `The ledger pages show their own empty-journal copy - "Exhibits in the ledger (0)", "Reading the journal" - because there is nothing in the store yet, which is the opposite of the demo data these pages used to carry. `
               + (missing.length ? `missing: ${missing.join('; ')}` : 'no retired fixture strings (' + retired.join(', ') + ') reappeared' + (stale.length ? ` except ${stale.join('; ')}` : '')) + '.'
     );
 
@@ -573,6 +594,11 @@ const main = async () => {
     const routesWanted = [
         'path="certificate/:evidenceId"', 'path="chargesheet/:caseId/gate"',
         'path="case/:id/chain-of-custody"', 'path="custody"', 'path="certificate"', 'path="chargesheet"',
+        // Q9, and the reason it is checked here: About existed for the whole life of this repository
+        // as a component imported by exactly one dead file (src/features/main/MainApp.tsx). A
+        // component that is not routed is a component that does not exist, so the route and the three
+        // sidebar links below are the claim - not the 250 lines of JSX, which passed review before.
+        'path="/about"',
     ];
     const routesMissing = routesWanted.filter((needle) => !app.includes(needle));
     check(
@@ -582,8 +608,9 @@ const main = async () => {
         + (routesMissing.length ? `missing: ${routesMissing.join(', ')}` : 'a route is one <Route> away from being reachable, and one <Route> away from being dead code again.')
     );
 
-    const navs = [['src/shared/layout/PoliceLayout.tsx', ['/police/certificate', '/police/chargesheet']],
-    ['src/shared/layout/JudgeLayout.tsx', ['/judge/custody']]];
+    const navs = [['src/shared/layout/PoliceLayout.tsx', ['/police/certificate', '/police/chargesheet', '/about']],
+    ['src/shared/layout/JudgeLayout.tsx', ['/judge/custody', '/about']],
+    ['src/shared/layout/CitizenLayout.tsx', ['/about']]];
     const navMissing = navs.flatMap(([file, needles]) => needles.filter((needle) => !read(file).includes(needle)));
     check(
         'Every new route is reachable from the persona navigation menus',
@@ -622,6 +649,15 @@ const main = async () => {
     // SDK, and proves the app survives with no key, invents nothing, and says which of the three
     // states it is in.
     // -----------------------------------------------------------------------
+    const walkTs = (dir, out = []) => {
+        for (const entry of fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
+            const rel = `${dir}/${entry.name}`;
+            if (entry.isDirectory()) walkTs(rel, out);
+            else if (/\.(ts|tsx)$/.test(entry.name)) out.push(rel);
+        }
+        return out;
+    };
+
     console.log('\n=== G. no API key must degrade the AI screens, not detonate them ===');
 
     const genaiStub = path.join(bundleDir, 'genai-stub.mjs');
@@ -653,6 +689,21 @@ const main = async () => {
         return outfile;
     };
 
+    // Same vehicle, any entry: the digest claim needs the lookup module and the hash function the
+    // screen actually calls, bundled the way the app bundles them.
+    const bundleTs = (entry, outName) => {
+        const outfile = path.join(bundleDir, outName);
+        try {
+            execFileSync(esbuildBin, [
+                entry, '--bundle', '--format=esm', '--platform=node', `--outfile=${outfile}`,
+            ], { cwd: repoRoot, stdio: 'pipe' });
+        } catch (err) {
+            console.error(`esbuild could not bundle ${entry}:\n${err.stderr ? err.stderr.toString() : err}`);
+            process.exit(2);
+        }
+        return outfile;
+    };
+
     // (1) empty key. The import itself is the regression: an exception here fails the claim.
     const noKey = await freshImport(bundleWithEnv('ai-no-key.mjs', { VITE_API_KEY: '' }));
     check(
@@ -663,13 +714,53 @@ const main = async () => {
         'The client is now built lazily on first use and `isGeminiConfigured()` is the public answer.'
     );
 
-    const fingerprint = await noKey.geminiService.generateQuantumFingerprint('charge sheet body', 'en');
+    const DIGEST_API = /quantumHash|generateQuantumFingerprint|QuantumFingerprintResult|anomalyDetector/;
+    const digestOffenders = walkTs('src')
+        // The nationals island keeps its own private copy of the old type; it dies with the purge
+        // (docs/PLAN_4a.md). Excluding it is stated here rather than quietly shrinking the scan.
+        .filter((f) => !f.startsWith('src/features/nationals/'))
+        .filter((f) => DIGEST_API.test(codeOnly(f)));
+    const lookup = await freshImport(bundleTs('src/shared/utils/integrityLookup.ts', 'integrity-lookup.mjs'));
+    const sha = await freshImport(bundleTs('src/core/trust/sha256.ts', 'sha256-module.mjs'));
+    // The record is shaped the way the Evidence Locker writes it (`sha256: hashResult.hash.toUpperCase()`,
+    // EvidenceLocker.tsx:212), because that is the thing the check has to match against: the journal
+    // keeps the exhibit digest upper-cased while sha256Hex returns lower-case, so an exact-string
+    // comparison would report a logged document as unlogged. Case-insensitive, and tested that way.
+    const logged = 'charge sheet body, as logged';
+    const loggedDigest = await sha.sha256Hex(logged);
+    const exhibitRecord = (digest) => [{
+        index: 7,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        leafDigest: '00'.repeat(32),
+        previousDigest: '00'.repeat(32),
+        data: { kind: 'EVIDENCE', id: 'EV-G1', fileName: 'charge-sheet.pdf', sha256: digest.toUpperCase() },
+    }];
+    const hit = lookup.findByDigest(exhibitRecord(loggedDigest), loggedDigest);
+    const anchoredLabel = lookup.integrityVerdict(hit, true).label;
+    const unanchoredLabel = lookup.integrityVerdict(hit, false).label;
+    const missLabel = lookup.integrityVerdict(
+        lookup.findByDigest(exhibitRecord(loggedDigest), 'ab'.repeat(32)), false, false
+    ).label;
+    const refusesGarbage = lookup.findByDigest(exhibitRecord(loggedDigest), 'the model said this was a hash') === null;
     check(
-        'No analysis returns no analysis - not a fabricated digest, not a tampering verdict',
-        fingerprint === null,
-        'The old fallback object put the sentence "Error generating hash: Fallback response due to API failure." ' +
-        'into `quantumHash` for a monospace block to render as a fingerprint, and asserted ' +
-        '`integrityStatus: "Potential Tampering Detected"`. Offline, that accused every document of tampering.'
+        'Nothing asks a language model for a digest, and the check that replaced it answers in three states',
+        digestOffenders.length === 0
+            && noKey.geminiService.generateQuantumFingerprint === undefined
+            && noKey.anomalyDetector === undefined
+            && isHex64(loggedDigest) && hit !== null && hit.recordIndex === 7
+            && anchoredLabel === 'FOUND (anchored at index 7)'
+            && unanchoredLabel === 'FOUND (not yet anchored)'
+            && missLabel === 'NOT IN JOURNAL'
+            && refusesGarbage,
+        digestOffenders.length
+            ? `the invented-digest API is still named in: ${digestOffenders.join(', ')}`
+            : 'the AI service exports no fingerprint method and no anomaly logger; the app\'s own sha256Hex over '
+              + 'logged bytes matches the journal record and yields exactly "FOUND (anchored at index 7)" / '
+              + '"FOUND (not yet anchored)" / "NOT IN JOURNAL"; a value that is not 64 hex characters is refused '
+              + 'instead of compared. This replaces a screen that asked gemini-2.5-pro to "generate a unique '
+              + 'quantum cryptographic hash", rendered the answer as a fingerprint, and offered an '
+              + 'integrityStatus of "Verified & Secure" or "Potential Tampering Detected" - which, offline, '
+              + 'accused every document in the tree.'
     );
 
     const prediction = await noKey.geminiService.predictCaseOutcome({ id: 'CASE-G' }, 'en');
@@ -696,14 +787,6 @@ const main = async () => {
         'means calling the API, and a test suite must not make network calls.'
     );
 
-    const walkTs = (dir, out = []) => {
-        for (const entry of fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-            const rel = `${dir}/${entry.name}`;
-            if (entry.isDirectory()) walkTs(rel, out);
-            else if (/\.(ts|tsx)$/.test(entry.name)) out.push(rel);
-        }
-        return out;
-    };
     // Deliberately NOT codeOnly() here: a suppression directive is a comment, so stripping comments
     // would make this claim unfalsifiable - it would report "clean" forever, which is the same failure
     // as grepping prose, pointed the other way. The cost is that prose in src/ must not spell the
@@ -776,7 +859,11 @@ const main = async () => {
         for (const next of edgesFrom(queue.pop())) if (!reachable.has(next)) { reachable.add(next); queue.push(next); }
     }
 
-    const CLAIM = /blockchain|zero[- ]?knowledge|post[- ]?quantum|quantum[- ]secure|india['\u2019]s first|tamper[- ]proof|unhackable|unbreakable/i;
+    // D19 adds the last two, and their absence was load-bearing: "End-to-End Encrypted" sat on the
+    // front door of the app (LandingPage's badge) and in About's trust indicators, and "Court-grade
+    // security" sat beside it, while this build has no transport layer to describe. A screen the
+    // router hides is not the same as a screen that tells the truth, so the vocabulary is the gate's.
+    const CLAIM = /blockchain|zero[- ]?knowledge|post[- ]?quantum|quantum[- ]secure|india['\u2019]s first|tamper[- ]proof|unhackable|unbreakable|end[- ]to[- ]end encryption|court[- ]?grade/i;
     const quotedStrings = (text) => [...text.matchAll(/"[^"\n]{6,}"|'[^'\n]{6,}'|`[^`\n]{6,}`|>[^<>{}`/\n]{12,}</g)].map((m) => m[0]);
     const offenders = [];
     for (const file of srcFiles) {
