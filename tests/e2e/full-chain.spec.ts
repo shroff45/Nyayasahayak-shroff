@@ -42,9 +42,15 @@ const COMPLAINT =
 async function signIn(page: Page, card: RegExp, landing: RegExp, fields: Record<string, string>) {
     await page.goto('/');
     await page.getByRole('button', { name: card }).first().click();
-    // Exactly one <form> exists on this page - the modal's - so scoping to it is not a hedge.
+    // The modal is the only <form> on the landing page, so scoping to it is not a hedge. Asserting it
+    // first is: a modal that never opened and a field that does not exist both look like a timeout on
+    // the chained locator, and CI spent one cycle learning that here.
     const form = page.locator('form');
-    await form.getByPlaceholder('Enter your full name').fill('E2E Runner');
+    await expect(form, `the sign-in modal did not open after clicking ${card}`).toBeVisible({ timeout: 15_000 });
+    // `fields` carries every value, including the name, because `renderRoleSpecificFields()` is a
+    // `switch` on the role: each persona asks for a differently-labelled first field ("Enter your full
+    // name" for a citizen, "SI Sharma" for an officer, "Hon. Justice Patel" for a judge). The form is
+    // the same `<form>`; the questions are not.
     for (const [placeholder, value] of Object.entries(fields)) {
         await form.getByPlaceholder(placeholder).fill(value);
     }
@@ -133,7 +139,10 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
     test.setTimeout(180_000);
 
     await test.step('Act 1 — the citizen files, and the receipt is the journal’s own answer', async () => {
-        await signIn(page, /Citizen Access/, /\/citizen\/home$/, { 'your.email@gmail.com': 'e2e@example.com' });
+        await signIn(page, /Citizen Access/, /\/citizen\/home$/, {
+            'Enter your full name': 'E2E Runner',
+            'your.email@gmail.com': 'e2e@example.com',
+        });
         // Deep link, deliberately, and it earned the right. Two things hid here. `getByText("File
         // Complaint")` timed out on a node that is real but invisible - `CitizenLayout` renders its nav
         // twice (`:109` and `:138`), so the first text match was a drawer entry hidden at 1440 px. And
@@ -186,15 +195,18 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
     await test.step('Act 2 — the officer sees the case, and the exhibit becomes a journal record', async () => {
         await signOut(page);
         await signIn(page, /Police Force/, /\/police\/dashboard$/, {
-            'DL-PS-12345': 'DL-PS-12345',
+            'SI Sharma': 'E2E Runner',
+            'DL-PS-12345': 'E2E-12345',
             'Saket PS, Delhi': 'Central Market PS, Coimbatore',
             '••••••••': 'e2e-not-a-real-login',
         });
         await page.goto('/police/evidence');
 
         // The proof of D20, in one line: the case the citizen filed is an option the officer can pick.
+        // Counted rather than checked for visibility, because an <option> in a closed <select> has no
+        // box to see - the natural assertion here is the one that would have failed the run.
         const picker = page.locator('label', { hasText: 'This exhibit belongs to' }).locator('select');
-        await expect(picker.locator('option', { hasText: /^CASE-/ }).first()).toBeVisible();
+        await expect(picker.locator('option', { hasText: /^CASE-/ }), 'the citizen complaint must be pickable by the officer').not.toHaveCount(0);
         await expect(page.getByText('no case in the ledger yet')).toHaveCount(0);
         await picker.selectOption({ index: 1 });
 
@@ -215,7 +227,8 @@ test('a complaint reaches the docket, an exhibit reaches the journal, and the di
     await test.step('Act 3 — the judge re-reads the same bytes and the ledger agrees', async () => {
         await signOut(page);
         await signIn(page, /Judiciary/, /\/judge\/board$/, {
-            'DHC-J-1234': 'DHC-J-1234',
+            'Hon. Justice Patel': 'E2E Runner',
+            'DHC-J-1234': 'E2E-J-1234',
             'Delhi High Court': 'Principal District & Sessions Court, Coimbatore',
             '••••••••': 'e2e-not-a-real-login',
         });
