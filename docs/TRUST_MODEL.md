@@ -211,6 +211,13 @@ in its `<select>`, an exhibit uploaded there becomes a ledger record, and the sa
 the judge's verifier return a match. That is the whole trust path, and it is exactly the shape of thing
 D20 got wrong while every grep in the repository stayed green.
 
+Green on `05dbf35`: `2 passed (28.6s)`, all seven CI steps. That run is the first time anything in this
+repository clicked through the whole chain, and it paid for itself immediately — `goto("/citizen/file")`
+had been arriving at `/citizen/home`, because `App` chose its public route tree before the session restore
+finished and that tree's catch-all rewrote the address. Every bookmarked or shared deep link in the product
+lost its target, and a type checker, 53 unit tests and a source-reading harness were all green while that
+was true. It is D25, fixed by holding the first paint on `isLoading` and pinned by harness claim 27.
+
 It needs a browser binary (`npx playwright install --with-deps chromium`, which CI runs) and it drives
 `vite preview` on `npm run build`, so a green journey and a green build describe the same bytes. The
 origin must stay a loopback one: every digest here is `crypto.subtle`, and WebCrypto exists only in a
