@@ -25,7 +25,14 @@ if (!Number.isFinite(budgetKb) || budgetKb <= 0) {
     process.exit(2);
 }
 
-const log = readFileSync(logPath, 'utf8');
+// ANSI codes must go before anything else. GitHub Actions sets FORCE_COLOR=1 for every step, so
+// the same `vite build | tee build.log` that parses cleanly in a terminal arrives here colourised,
+// and the escape between a size and its unit ('591.86\e[22m kB') makes every asset line
+// unmatchable. That used to present as "asset over budget" in the run summary when nothing of the
+// sort was measured - which is what this file is for.
+const log = readFileSync(logPath, 'utf8')
+    .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/\r/g, '');
 
 // vite prints both raw and gzipped sizes; only the raw transfer size is gated here because
 // gzip effectiveness differs per asset type (JS compresses, fonts mostly do not).
