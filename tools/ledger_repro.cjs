@@ -9,11 +9,11 @@
  * esbuild already in node_modules, installs a localStorage shim, and exercises the shipped
  * module - the same code path the Evidence Locker and the judge's verifier call.
  *
- * Thirteen checks: the twelve groups the audit raised, plus one that keeps the two SHA-256
- * implementations from splitting apart again:
+ * Checks in six groups:
  *   A zero-knowledge / tamper detection     B persistence, attribution, offline verification
  *   C "post-quantum"                        D the merkleRoot field
  *   E how many ledger copies exist and whether they agree
+ *   F whether the Block 3 screens actually mount, are routed, and are free of demo fixtures
  *
  * Exit status is the point. A harness that prints FAIL and still returns 0 is how a repo ships
  * a "100% verified" badge for years.
@@ -439,6 +439,177 @@ const main = async () => {
         'Every ledger copy is actually reachable from the app',
         reachability.ok,
         'A ledger module nobody imports keeps the claims alive for a reviewer while the running app writes elsewhere - that is how the nationals copy survived, reachable from two citizen screens and invisible to the judge. This check fails if such an orphan reappears. ' + reachability.detail
+    );
+
+
+    console.log('\n=== F. The Block 3 screens: mounted, routed, and free of demo fixtures ===');
+
+    // A component that compiles is not a component that mounts, and "the screen exists" was the
+    // exact claim that had been false for these three screens for as long as they have been in the
+    // tree. So render them for real: write an entry into tools/, bundle it with esbuild (React,
+    // react-dom/server and react-router are resolved from node_modules like the app does), and
+    // render each page to markup through the app's own provider stack. Effects do not run under
+    // renderToStaticMarkup, which is the right property here: what is on screen is the component's
+    // own first paint against an empty store, with nothing fetched and nothing invented.
+    const entryRel = 'tools/.block3-render.tsx';
+    const entryPath = path.join(repoRoot, entryRel);
+    const entrySource = [
+        "import React from 'react';",
+        "import { renderToStaticMarkup } from 'react-dom/server';",
+        "import { MemoryRouter, Route, Routes } from 'react-router-dom';",
+        "import { AuthProvider } from '../src/core/auth/AuthContext';",
+        "import { AppSettingsProvider } from '../src/core/context/AppSettingsContext';",
+        "import { WorkspaceProvider } from '../src/core/context/WorkspaceContext';",
+        "import { ToastProvider } from '../src/shared/hooks/useToast';",
+        "import EvidenceLocker from '../src/personas/police/pages/EvidenceLocker';",
+        "import CertificatePage from '../src/personas/police/pages/Section63CertificatePage';",
+        "import GatePage from '../src/personas/police/pages/ChargeSheetGatePage';",
+        "import CustodyPage from '../src/personas/judge/pages/CaseChainOfCustodyPage';",
+        "import CertificateWizard from '../src/personas/police/components/Section63CertificateGenerator';",
+        "",
+        "const shell = (route: string, pattern: string, node: React.ReactNode) => renderToStaticMarkup(",
+        "    <AuthProvider><AppSettingsProvider><WorkspaceProvider><ToastProvider>",
+        "        <MemoryRouter initialEntries={[route]}>",
+        "            <Routes><Route path={pattern} element={<>{node}</>} /></Routes>",
+        "        </MemoryRouter>",
+        "    </ToastProvider></WorkspaceProvider></AppSettingsProvider></AuthProvider>",
+        ");",
+        "",
+        "export const screens = () => ({",
+        "    locker: shell('/police/evidence', '/police/evidence', <EvidenceLocker />),",
+        "    certificate: shell('/police/certificate', '/police/certificate', <CertificatePage />),",
+        "    gate: shell('/police/chargesheet', '/police/chargesheet', <GatePage />),",
+        "    custody: shell('/judge/custody', '/judge/custody', <CustodyPage />),",
+        "    certificateDeep: shell('/police/certificate/EV-1', '/police/certificate/:evidenceId', <CertificatePage />),",
+        "    gateDeep: shell('/police/chargesheet/CASE-1/gate', '/police/chargesheet/:caseId/gate', <GatePage />),",
+        "    custodyDeep: shell('/judge/case/CASE-1/chain-of-custody', '/judge/case/:id/chain-of-custody', <CustodyPage />),",
+        "    // The wizard on its own: the pages only reach it once the store has answered, and an SSR",
+        "    // render never waits. Mounted directly, its first step is on screen immediately.",
+        "    generator: shell('/x', '/x', <CertificateWizard evidenceId=\"EV-1\" fileName=\"scene.mp4\" ledgerDigest=\"aa\" />),",
+        "});",
+        "",
+    ].join('\n');
+
+    let rendered = null;
+    let renderFailure = null;
+    // The bundle lands inside the repo, not in the temp dir: `react` and `react-dom` are left
+    // external so the render uses the same React instance the app uses, and node resolves bare
+    // specifiers from the importing file's directory. In /tmp that resolution finds nothing, and a
+    // harness whose fixture cannot load must fail loudly rather than skip.
+    // CommonJS, not ESM, for this one bundle: `react-dom/server` is a CJS package and bundling it
+    // into an ESM output leaves esbuild emitting a `require('react')` that node refuses. Keeping
+    // react and react-dom external and requiring the result is how node and CJS want to be used.
+    const renderOut = path.join(repoRoot, 'tools', '.block3-render.cjs');
+    fs.writeFileSync(entryPath, entrySource);
+    try {
+        execFileSync(esbuildBin, [
+            entryRel, '--bundle', '--format=cjs', '--platform=node',
+            '--external:react', '--external:react-dom', `--outfile=${renderOut}`,
+        ], { cwd: repoRoot, stdio: 'pipe' });
+        // react-dom/server warns that useLayoutEffect is inert during SSR: true, irrelevant here,
+        // and seventeen copies of it would bury the rest of this log. Swallow that one line and
+        // re-emit everything else, so a warning that matters still reaches the reader.
+        const realError = console.error;
+        console.error = (...args) => {
+            if (typeof args[0] === 'string' && args[0].includes('useLayoutEffect does nothing on the server')) return;
+            realError(...args);
+        };
+        try {
+            rendered = require(renderOut).screens();
+        } finally {
+            console.error = realError;
+        }
+    } catch (err) {
+        renderFailure = (err && err.stderr ? err.stderr.toString() : String(err)).split('\n').slice(0, 8).join('\n');
+    } finally {
+        fs.rmSync(entryPath, { force: true });
+        fs.rmSync(renderOut, { force: true });
+    }
+
+    const expect = {
+        locker: ['Evidence Locker', 'Exhibits in the ledger (0)', 'Reading the journal'],
+        certificate: ['Section 63 Certificate', 'Reading the ledger'],
+        // Without a case in the store there is nothing to interlock against, so the top-level route
+        // is expected to show the picker and NOT the gate. The gate itself is only asserted on the
+        // deep link, where a case id is named - and there it must render its pending panel rather
+        // than the blank it used to return before it had an answer.
+        gate: ['Charge Sheet', 'Forensic Interlock'],
+        custody: ['Chain of Custody', 'Reading the journal'],
+        certificateDeep: ['Section 63 Certificate', 'Reading the ledger'],
+        generator: ['BSA Section 63 Certificate Generator', 'Step 1: Device Information', 'IMEI'],
+        gateDeep: ['Charge Sheet', 'Forensic Interlock', 'BNSS Sec 176(3)', 'Submission stays closed'],
+        custodyDeep: ['Chain of Custody'],
+    };
+    // 'DEMO-' is left out on purpose: the hard-coded fixture ids this repo used to carry are worth
+    // forbidding, but a page may legitimately print the word in a caveat, so that is checked where
+    // the fixtures used to live rather than in rendered markup.
+    const retired = ['Court Ready', 'Captured / Uploaded', 'Sample Evidence', 'lorem'];
+    const missing = [];
+    const stale = [];
+    for (const [name, sentinels] of Object.entries(expect)) {
+        const html = rendered ? rendered[name] : null;
+        if (typeof html !== 'string' || html.length < 200) { missing.push(`${name} (no markup)`); continue; }
+        for (const text of sentinels) if (!html.includes(text)) missing.push(`${name}: "${text}"`);
+        for (const ghost of retired) if (html.includes(ghost)) stale.push(`${name}: "${ghost}"`);
+    }
+    check(
+        'Every wired screen mounts, and mounts on the store rather than a fixture',
+        !renderFailure && missing.length === 0 && stale.length === 0,
+        renderFailure
+            ? `the screens could not even be rendered:\n             ${renderFailure}`
+            : `${Object.keys(expect).length} renders (four top-level routes plus three deep links with a path param) through AuthProvider/WorkspaceProvider/ToastProvider, the same stack main.tsx installs. `
+              + `Each shows its own empty-journal copy - "Exhibits in the ledger (0)", "Reading the journal" - because there is nothing in the store yet, which is the opposite of the demo data these pages used to carry. `
+              + (missing.length ? `missing: ${missing.join('; ')}` : 'no retired fixture strings (' + retired.join(', ') + ') reappeared' + (stale.length ? ` except ${stale.join('; ')}` : '')) + '.'
+    );
+
+    // Comments are stripped for every claim below, and deliberately so: this project's source is
+    // full of honest notes like "this used to be `mockDelay(1200)`", and a check that reads a comment
+    // as a claim fails for the wrong reason until someone weakens the check. `codeOnly` is what the
+    // label sweeps in group A already use, so prose can neither pass nor fail these.
+    const read = (file) => codeOnly(file);
+    const app = read('src/App.tsx');
+    const routesWanted = [
+        'path="certificate/:evidenceId"', 'path="chargesheet/:caseId/gate"',
+        'path="case/:id/chain-of-custody"', 'path="custody"', 'path="certificate"', 'path="chargesheet"',
+    ];
+    const routesMissing = routesWanted.filter((needle) => !app.includes(needle));
+    check(
+        'Each screen is routed, including the deep links a court order would cite',
+        routesMissing.length === 0,
+        `App.tsx declares /police/certificate[/:evidenceId], /police/chargesheet[/:caseId/gate] and /judge/custody + /judge/case/:id/chain-of-custody. `
+        + (routesMissing.length ? `missing: ${routesMissing.join(', ')}` : 'a route is one <Route> away from being reachable, and one <Route> away from being dead code again.')
+    );
+
+    const navs = [['src/shared/layout/PoliceLayout.tsx', ['/police/certificate', '/police/chargesheet']],
+    ['src/shared/layout/JudgeLayout.tsx', ['/judge/custody']]];
+    const navMissing = navs.flatMap(([file, needles]) => needles.filter((needle) => !read(file).includes(needle)));
+    check(
+        'Every new route is reachable from the persona navigation menus',
+        navMissing.length === 0,
+        navMissing.length ? `not in any nav array: ${navMissing.join(', ')}`
+            : 'Police: "Sec 63 Certificate", "Charge Sheet Gate". Judge: "Chain of Custody". A screen only reachable by guessing a URL is a screen nobody uses, which is how the three were lost the first time.'
+    );
+
+    const custodyShared = ['src/personas/police/pages/EvidenceLocker.tsx', 'src/personas/judge/pages/CaseChainOfCustodyPage.tsx']
+        .filter((file) => !read(file).includes('shared/components/ChainOfCustodyTimeline'));
+    const lockerFake = read('src/personas/police/pages/EvidenceLocker.tsx').includes("label: 'Court Ready'");
+    check(
+        'One custody timeline, mounted on both sides of the case',
+        custodyShared.length === 0 && !lockerFake,
+        custodyShared.length
+            ? `does not render the shared component: ${custodyShared.join(', ')}`
+            : 'The Evidence Locker used to draw its own four-step strip - Captured, Uploaded, Hashed, Court Ready - with a progress bar whose width an `if` chose. That component is deleted; both the locker and the judge now render the same shared timeline, fed by buildCustodyChain(), so the two cannot disagree about what the custody record says.'
+    );
+
+    const theatre = [
+        ['src/personas/police/pages/EvidenceLocker.tsx', ['mockDelay', "from '../../../shared/utils/mockApi'"]],
+        ['src/personas/police/components/Section63CertificateGenerator.tsx', ['(PDF)', 'mockDelay']],
+    ].flatMap(([file, needles]) => needles.filter((needle) => read(file).includes(needle)));
+    check(
+        'No certificate waits on a timer, and no button promises a format this app cannot produce',
+        theatre.length === 0,
+        theatre.length ? `still present: ${theatre.join(', ')}`
+            : 'The wizard\'s "Download Part A (PDF)" had no handler and there is no PDF writer in the tree; it now downloads the text the s.63 Schedule can actually be read from, and the certificate\'s own digest is anchored so the download can be checked against the journal. The locker\'s verify/certificate buttons used to sleep for a second and then claim success.'
     );
 
     console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);

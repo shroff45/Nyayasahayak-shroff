@@ -10,7 +10,8 @@ import {
     canSubmitChargeSheet,
     requestComplianceOverride,
     getComplianceDisplayStatus,
-    isForensicVideoMandatory
+    isForensicVideoMandatory,
+    withRecordedOverride
 } from '../../../core/services/forensicInterlock';
 import type {
     ForensicCompliance,
@@ -24,8 +25,23 @@ interface ChargeSheetGateProps {
     cnrNumber?: string;
     sections: string[];
     lawCode: 'BNS' | 'IPC';
+    /**
+     * Date of the incident. BNSS s.176(3) reaches only conduct on or after 01-07-2024, and Article
+     * 20(1) forbids applying it backwards; without this date the interlock would lock charge sheets
+     * in cases the new codes do not govern.
+     */
+    incidentDate?: string | Date | null;
     forensicVideo?: ForensicVideoMetadata | null;
     expertVisitToken?: ForensicVisitToken | null;
+    /**
+     * An override already requested and recorded (the ledger, not this component). Passed down so a
+     * pending request survives a refresh and keeps the gate locked instead of evaporating.
+     */
+    recordedOverride?: ForensicCompliance['override'];
+    /** Called when the officer files an override request; the caller is expected to record it. */
+    onOverrideRequested?: (reason: OverrideReason, details: string, compliance: ForensicCompliance) => void;
+    /** Whose name an override request is attributed to. Nothing here authenticates it. */
+    requestedBy?: string;
     onSubmit: () => void;
     onUploadVideo: () => void;
     onRequestExpert: () => void;
@@ -38,6 +54,10 @@ const ChargeSheetGate: React.FC<ChargeSheetGateProps> = ({
     lawCode,
     forensicVideo = null,
     expertVisitToken = null,
+    recordedOverride,
+    onOverrideRequested,
+    incidentDate,
+    requestedBy = 'the officer holding this device',
     onSubmit,
     onUploadVideo,
     onRequestExpert
@@ -47,8 +67,11 @@ const ChargeSheetGate: React.FC<ChargeSheetGateProps> = ({
     const [overrideReason, setOverrideReason] = useState<OverrideReason | ''>('');
     const [overrideDetails, setOverrideDetails] = useState('');
 
-    // Check if forensic video is mandatory
-    const mandatoryCheck = isForensicVideoMandatory(sections, lawCode);
+    // Check if forensic video is mandatory, with the commencement guard applied.
+    const incident = incidentDate
+        ? (incidentDate instanceof Date ? incidentDate : new Date(incidentDate))
+        : undefined;
+    const mandatoryCheck = isForensicVideoMandatory(sections, lawCode, incident && !Number.isNaN(incident.getTime()) ? incident : undefined);
 
     // Validate compliance on mount and when dependencies change
     useEffect(() => {
@@ -58,10 +81,28 @@ const ChargeSheetGate: React.FC<ChargeSheetGateProps> = ({
             expertVisitToken,
             mandatoryCheck.isMandatory
         );
-        setCompliance(result);
-    }, [caseId, forensicVideo, expertVisitToken, mandatoryCheck.isMandatory]);
+        setCompliance(recordedOverride ? withRecordedOverride(result, recordedOverride) : result);
+    }, [caseId, forensicVideo, expertVisitToken, mandatoryCheck.isMandatory, recordedOverride]);
 
-    if (!compliance) return null;
+    // Not `return null`. A gate that renders nothing while it computes is indistinguishable from a
+    // gate that is not there at all, and the two have opposite meanings on a charge-sheet screen.
+    if (!compliance) {
+        return (
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-6">
+                <div className="flex items-center gap-2 mb-3">
+                    <Shield className="w-5 h-5 text-purple-400" />
+                    <h2 className="font-bold text-white">Charge Sheet Submission</h2>
+                    <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded">
+                        BNSS Sec 176(3)
+                    </span>
+                </div>
+                <p className="text-sm text-slate-400">
+                    Computing compliance from the case record. Submission stays closed until this screen
+                    can show what it checked.
+                </p>
+            </div>
+        );
+    }
 
     const displayStatus = getComplianceDisplayStatus(compliance);
     const submissionCheck = canSubmitChargeSheet(compliance);
@@ -84,12 +125,16 @@ const ChargeSheetGate: React.FC<ChargeSheetGateProps> = ({
 
         const updated = requestComplianceOverride(
             compliance,
-            'current_user', // Would come from auth
+            // The auth context has a name for this session; the page that mounted us owns it. There
+            // is no server here to authenticate against, and the record says so rather than pretending.
+            requestedBy,
             overrideReason,
             overrideDetails
         );
         setCompliance(updated);
         setShowOverrideModal(false);
+        // Persisted by the caller. Without this the request existed only in this component's state.
+        onOverrideRequested?.(overrideReason, overrideDetails, updated);
     };
 
     return (

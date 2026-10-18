@@ -11,7 +11,8 @@ import {
     Briefcase,
     LogOut,
     FileText,
-    Gavel
+    Gavel,
+    ShieldCheck
 } from 'lucide-react';
 
 const JudgeLayout: React.FC = () => {
@@ -23,6 +24,7 @@ const JudgeLayout: React.FC = () => {
         { path: '/judge/draft', label: 'Draft & Audit', labelHi: 'मसौदा और लेखापरीक्षा', icon: PenTool },
         { path: '/judge/moot-court', label: 'Virtual Moot Court', labelHi: 'वर्चुअल मूट कोर्ट', icon: Gavel },
         { path: '/judge/evidence', label: 'Evidence Vault', labelHi: 'साक्ष्य भंडार', icon: Briefcase },
+        { path: '/judge/custody', label: 'Chain of Custody', labelHi: 'हिरासत श्रृंखला', icon: ShieldCheck },
         { path: '/judge/bail', label: 'Smart Bail', labelHi: 'स्मार्ट जमानत', icon: Scale },
         { path: '/judge/orders', label: 'Orders History', labelHi: 'आदेश इतिहास', icon: FileText },
     ];

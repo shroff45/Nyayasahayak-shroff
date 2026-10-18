@@ -12,7 +12,9 @@ import {
     Mic,
     Clock,
     LogOut,
-    Calendar
+    Calendar,
+    FileCheck,
+    Scale
 } from 'lucide-react';
 
 const PoliceLayout: React.FC = () => {
@@ -23,6 +25,8 @@ const PoliceLayout: React.FC = () => {
         { path: '/police/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/police/fir', label: 'Smart FIR', icon: Mic },
         { path: '/police/evidence', label: 'Evidence Locker', icon: Lock },
+        { path: '/police/certificate', label: 'Sec 63 Certificate', icon: FileCheck },
+        { path: '/police/chargesheet', label: 'Charge Sheet Gate', icon: Scale },
         { path: '/police/roster', label: 'Duty Roster', icon: Calendar },
         { path: '/police/patrol', label: 'Patrol Map', icon: Map },
         { path: '/police/bot', label: 'NyayaBot', icon: MessageSquare },

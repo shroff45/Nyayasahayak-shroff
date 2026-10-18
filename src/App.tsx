@@ -57,6 +57,10 @@ const CitizenComplaintPage = React.lazy(() => import('./personas/citizen/pages/C
 const PoliceDashboard = React.lazy(() => import('./personas/police/pages/PoliceDashboard'));
 const SmartFIRPage = React.lazy(() => import('./personas/police/pages/SmartFIR'));
 const EvidenceLockerPage = React.lazy(() => import('./personas/police/pages/EvidenceLocker'));
+// Block 3: screens that were written but never routed. Each is mounted at two paths — a bare one
+// that lists what the ledger holds, and the deep link a party or an order would cite.
+const Section63CertificatePage = React.lazy(() => import('./personas/police/pages/Section63CertificatePage'));
+const ChargeSheetGatePage = React.lazy(() => import('./personas/police/pages/ChargeSheetGatePage'));
 const PatrolMapPage = React.lazy(() => import('./personas/police/pages/PatrolMap'));
 const DutyRosterPage = React.lazy(() => import('./personas/police/pages/DutyRoster'));
 
@@ -67,6 +71,7 @@ const PendencyMapPage = React.lazy(() => import('./personas/admin/pages/Pendency
 
 // Judge-specific Components (BSA Compliance)
 const HashVerifierPage = React.lazy(() => import('./personas/judge/pages/HashVerifier'));
+const CaseChainOfCustodyPage = React.lazy(() => import('./personas/judge/pages/CaseChainOfCustodyPage'));
 const JudgeBoardPage = React.lazy(() => import('./personas/judge/pages/JudgeBoard'));
 const JudgeWellnessPage = React.lazy(() => import('./personas/judge/pages/JudgeWellness'));
 const CaseQueuePage = React.lazy(() => import('./personas/judge/pages/CaseQueuePage'));
@@ -406,6 +411,10 @@ const App: React.FC = () => {
                                 <Route path="dashboard" element={<React.Suspense fallback={<LoadingFallback />}><PoliceDashboard /></React.Suspense>} />
                                 <Route path="fir" element={<React.Suspense fallback={<LoadingFallback />}><SmartFIRPage /></React.Suspense>} />
                                 <Route path="evidence" element={<React.Suspense fallback={<LoadingFallback />}><EvidenceLockerPage /></React.Suspense>} />
+                                <Route path="certificate" element={<React.Suspense fallback={<LoadingFallback />}><Section63CertificatePage /></React.Suspense>} />
+                                <Route path="certificate/:evidenceId" element={<React.Suspense fallback={<LoadingFallback />}><Section63CertificatePage /></React.Suspense>} />
+                                <Route path="chargesheet" element={<React.Suspense fallback={<LoadingFallback />}><ChargeSheetGatePage /></React.Suspense>} />
+                                <Route path="chargesheet/:caseId/gate" element={<React.Suspense fallback={<LoadingFallback />}><ChargeSheetGatePage /></React.Suspense>} />
                                 <Route path="quantum" element={<QuantumFingerprintWrapper />} />
                                 <Route path="hash" element={<QuantumHashWrapper />} />
                                 <Route path="patrol" element={<React.Suspense fallback={<LoadingFallback />}><PatrolMapPage /></React.Suspense>} />
@@ -437,6 +446,8 @@ const App: React.FC = () => {
                                 <Route path="history" element={<HistoryWrapper />} />
                                 <Route path="verify" element={<React.Suspense fallback={<LoadingFallback />}><HashVerifierPage /></React.Suspense>} />
                                 <Route path="moot-court" element={<React.Suspense fallback={<LoadingFallback />}><VirtualMootCourtPage /></React.Suspense>} />
+                                <Route path="custody" element={<React.Suspense fallback={<LoadingFallback />}><CaseChainOfCustodyPage /></React.Suspense>} />
+                                <Route path="case/:id/chain-of-custody" element={<React.Suspense fallback={<LoadingFallback />}><CaseChainOfCustodyPage /></React.Suspense>} />
                             </Route>
                         </Route>
 
