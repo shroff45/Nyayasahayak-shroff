@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Case, Language } from '../types';
+import { applicableLawFor } from '../core/workspace/legacyCaseAdapter';
 import { addBlock } from '../services/akhandLedger';
 import { Mic, MicOff } from 'lucide-react';
 
@@ -113,6 +114,7 @@ export default function VoiceFilingInterface() {
     const handleSubmit = async () => {
         if (!extractedData) return;
 
+        const nowIso = new Date().toISOString();
         const completeCase: Case = {
             id: `C${Date.now()}`,
             cnrNumber: `DL/${new Date().getFullYear()}/${Math.floor(Math.random() * 10000)}`,
@@ -124,8 +126,12 @@ export default function VoiceFilingInterface() {
             urgency: extractedData.urgency || 'MEDIUM',
             sectionsInvoked: extractedData.sectionsInvoked || [],
             status: 'FILED',
-            filingDate: new Date().toISOString(),
-            adjournmentsCount: 0
+            filingDate: nowIso,
+            adjournmentsCount: 0,
+            // BNS vs IPC turns on the date of the incident; for a fresh e-FIR that is now.
+            incidentDate: nowIso,
+            isZeroFir: false,
+            applicableLaw: applicableLawFor(nowIso)
         };
 
         const result = addBlock(completeCase);

@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import EvidenceLocker from './EvidenceLocker';
 import PatrolMap from './PatrolMap';
-import { SmartFIR } from './SmartFIR';
+import SmartFIR from './SmartFIR';
 import {
     Shield, Users, FileText, Map, Database,
     Clock, AlertTriangle, CheckCircle, Timer, Scale,

@@ -2,7 +2,7 @@
 // NyayaSahayak - Premium 3D Justice Orb Component
 // Pure Three.js implementation for maximum compatibility
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
     Shield, Heart, FileText, Building2,

@@ -4,24 +4,15 @@
 
 import React, { useState, useCallback } from 'react';
 import {
-    FileCheck,
-    Shield,
-    Upload,
-    Smartphone,
-    CheckCircle2,
-    AlertTriangle,
-    Loader2,
-    Download,
-    FileSignature,
-    Hash
-} from 'lucide-react';
+    FileCheck, Shield, Upload, Smartphone, CheckCircle2, Loader2, Download, FileSignature, Hash } from 'lucide-react';
 import { computeFileHash, formatHashForDisplay, type HashProgress } from '../../../core/services/evidenceHasher';
-import type { DeviceMetadata, Section63PartA, CertificationStatus } from '../../../types/evidence.types';
+import type { DeviceMetadata, Section63PartA } from '../../../types/evidence.types';
 
 interface Section63CertificateGeneratorProps {
     evidenceId: string;
-    fileName: string;
-    fileSize: number;
+    /** Document being certified. A §63(4) certificate has to name the computer output it hashes. */
+    fileName?: string;
+    fileSize?: number;
     onCertificateGenerated?: (partA: Section63PartA) => void;
 }
 
@@ -433,6 +424,14 @@ const Section63CertificateGenerator: React.FC<Section63CertificateGeneratorProps
                 <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded">
                     Evidence ID: {evidenceId}
                 </span>
+                {(fileName || typeof fileSize === 'number') && (
+                    <span className="text-xs text-slate-400 font-mono truncate max-w-xs" title={fileName}>
+                        {fileName ?? 'unlabelled export'}
+                        {typeof fileSize === 'number' && fileSize > 0
+                            ? ` • ${(fileSize / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB`
+                            : ''}
+                    </span>
+                )}
             </div>
 
             {/* Progress Steps */}

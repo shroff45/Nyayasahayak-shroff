@@ -3,21 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    Mic,
-    MicOff,
-    FileText,
-    Upload,
-    Loader2,
-    CheckCircle,
-    AlertTriangle,
-    Globe,
-    Calendar,
-    MapPin,
-    Send,
-    Keyboard,
-    Volume2,
-    Sparkles
-} from 'lucide-react';
+    Mic, MicOff, FileText, Upload, Loader2, CheckCircle, AlertTriangle, Globe, Calendar, MapPin, Keyboard, Volume2, Sparkles } from 'lucide-react';
 import ParticleHeader from '../../../shared/components/3d/ParticleHeader';
 import GlassCard from '../../../shared/components/3d/GlassCard';
 import Waveform3D from '../../../shared/components/3d/Waveform3D';

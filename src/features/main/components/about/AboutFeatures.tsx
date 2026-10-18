@@ -30,7 +30,7 @@ interface Feature {
  * 
  * Killer line: "From overwhelming to understandable — in seconds."
  */
-const AboutFeatures: React.FC<AboutFeaturesProps> = ({ t }) => {
+const AboutFeatures: React.FC<AboutFeaturesProps> = () => {
     const sectionRef = useRef<HTMLElement>(null);
     const cardsRef = useRef<HTMLDivElement>(null);
     const prefersReducedMotion = useReducedMotion();

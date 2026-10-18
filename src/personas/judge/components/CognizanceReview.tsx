@@ -4,23 +4,7 @@
 
 import React, { useState } from 'react';
 import {
-    Gavel,
-    Shield,
-    ShieldAlert,
-    AlertTriangle,
-    CheckCircle2,
-    XCircle,
-    FileWarning,
-    User,
-    MapPin,
-    Clock,
-    FileText,
-    ChevronDown,
-    ChevronUp,
-    Scale,
-    Eye,
-    MessageSquare
-} from 'lucide-react';
+    Gavel, Shield, ShieldAlert, AlertTriangle, CheckCircle2, XCircle, FileWarning, User, Clock, ChevronDown, ChevronUp, Scale, MessageSquare } from 'lucide-react';
 import type { ForensicCompliance, OverrideReason } from '../../../types/forensic.types';
 
 interface CognizanceReviewProps {

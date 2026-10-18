@@ -266,8 +266,12 @@ const EvidenceIntegrityDemo: React.FC = () => {
     // Handle charge sheet submission (updates shared state for Judge view)
     const handleChargeSheetSubmit = useCallback(() => {
         setChargeSheetFiled(true);
+        // Freeze the compliance record at filing time so the Judge view reviews what the
+        // police officer actually submitted, instead of re-deriving it from toggles flipped
+        // after submission.
+        setSharedCompliance(judgeCompliance);
         alert('✅ Charge Sheet Submitted Successfully! Switch to Judge View to see the cognizance review.');
-    }, []);
+    }, [judgeCompliance]);
 
     // Toggle component for simulation controls
     const Toggle: React.FC<{

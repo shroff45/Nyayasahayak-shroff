@@ -4,9 +4,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Map, BarChart3, TrendingDown, AlertTriangle,
-    RefreshCw, Filter, Download
-} from 'lucide-react';
+    Map, BarChart3, AlertTriangle, RefreshCw, Filter, Download } from 'lucide-react';
 
 // Declare Leaflet for TypeScript
 declare global {

@@ -218,6 +218,13 @@ const EFirSignatureTimer: React.FC<EFirSignatureTimerProps> = ({
 
             {/* Informant Details */}
             <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+                <div className="flex items-center gap-2 text-slate-400 col-span-2">
+                    <FileSignature className="w-4 h-4" />
+                    <span>
+                        Signed copy to be issued to{' '}
+                        <span className="text-slate-200 font-medium">{informantName}</span> after signature
+                    </span>
+                </div>
                 <div className="flex items-center gap-2 text-slate-400">
                     <Phone className="w-4 h-4" />
                     <span>{informantMobile}</span>
