@@ -22,6 +22,26 @@ This document exists so you can point at a line and say "do that." Section 13 is
 
 ---
 
+### 4(e) execution log (this branch)
+
+| commit | what | gate |
+|---|---|---|
+| `e3642d9d` | **D3, D4, D17** — lazy Gemini client + `isGeminiConfigured()`; a placeholder key counts as no key; no retry storm; the fabricated fingerprint fallback deleted; all three compiler suppressions removed (each was hiding a real bug, the chat one meant NYAYABOT's topic guardrail had never been applied); harness group G | tsc 0 · 49+14 tests · harness **24/24** · build 577.74 kB |
+| `174d9484` | **D5, D10** — every live string re-labelled to what the code does (landing page, citizen tracker, complaint receipt, judge verifier, en+hi translation values); `initializeLedger` / `getLedgerEntries` / `LedgerEntry` / `INTEGRITY_WATCHDOG`; harness group H — a liveness-aware anti-drift gate that parses aliases from `vite.config.ts`, treats `React.lazy` as a real edge, strips comments so a disclaimer cannot pass as a claim, and skips identifier-shaped strings so translation keys do not trip it | tsc 0 · 49+14 · **25/25** · build 577.91 kB |
+| `d2d26bb2` | **D9** — the demo verification route deleted: both `QuantumHashProof` copies, the lazy import, `QuantumHashWrapper`, `<Route path="hash">`. No nav linked to it; the judge's `HashVerifier` already does the real check, so a theatre of one was removed, not a capability | tsc 0 · 49+14 · **25/25** · build 97 assets (one chunk fewer), 577.64 kB |
+
+**D18 — found while doing D9, deliberately left for the next commit.** The surviving "quantum
+fingerprint" screen and `DocumentAnalysis` still ask the *language model* to invent a digest:
+`geminiService.ts:229` prompts "generate a unique quantum cryptographic hash", with a schema that
+makes `quantumHash` required, and the UI prints the answer in a monospace block as if it were a
+document fingerprint. That is the same category of defect as the fabricated fallback deleted in
+`e3642d9d`, only larger — it attests to bytes nobody hashed. Planned 4(e) commit 4: compute a real
+`sha256Hex` / `sha256OfFile` from `core/trust`, compare it against the digests already in the journal
+via `shared/utils/ledgerRecords`, rename the screen "Document Integrity Check" on route `/integrity`,
+delete `generateQuantumFingerprint` + `QuantumFingerprintResult` and the dead nationals twins that
+reference them, and move harness group G in the same commit so the suite never references a symbol
+that no longer exists.
+
 ## 1. What this project actually is
 
 A single-page React 18 + TypeScript + Vite application for India's BNS/BNSS/BSA transition. There is **no backend, no server, no database** in this repository — `git ls-files | grep -E "server|api/|express|prisma|supabase|firebase"` returns nothing. State lives in the browser (localStorage) and is protected by real SHA-256 hashing, an RFC-6962-style Merkle tree, and an ECDSA P-256 device signature over the daily anchor root.
@@ -226,20 +246,20 @@ Rules that have kept this project from lying to itself: `tools/ledger_repro.cjs`
 |---|---|---|---|---|
 | D1 | `.env` with `VITE_API_KEY` committed to a public repo — value proved to be an unfilled placeholder, so no exposure; the ignore-vs-track mechanism was broken regardless | §3 D1 | ~~critical~~ → closed | D0 (done) |
 | D2 | clone can't build on Linux/macOS (win32 `node_modules` tracked) | §3 D2 | **critical** | D0 |
-| D3 | no key ⇒ intake/bot routes white-screen. Now the *default* state of every clone, since the committed `.env` holds a placeholder: `throw` at module scope, reached through 5 live screens | `geminiService.ts:6-9` | **high — upgraded**, this is what a reviewer sees first | 4(e) |
-| D4 | error text delivered as a `quantumHash` | `geminiService.ts:259` | high | 4(e) |
-| D5 | false statutory/tech claims on live screens | §7 | high | 4(e) |
+| D3 | **closed** (`e3642d9d`). Was: no key ⇒ intake/bot routes white-screen — the default state of every clone, since the committed `.env` held a placeholder. | `geminiService.ts:6-9` | **high — upgraded**, this is what a reviewer sees first | 4(e)
+| D4 | **closed** (`e3642d9d`): the fabricated fallback is gone and absent analysis is `null`. The mechanism it fell back from is now D18. | `geminiService.ts:259` | high | 4(e)
+| D5 | **closed** (`174d9484`): live strings re-labelled, and harness group H fails the build if such a claim returns to a reachable file. | §7 | high | 4(e)
 | D6 | ledger defaults to a silently-volatile store | `store.ts` `defaultDriver()` | high | 4(new) |
 | D7 | 4 competing `Case` models + adapter; journal rows already heterogeneous | §8, `LedgerSubject` | high | 4(a) |
 | D8 | 112 unreachable files / 21,784 lines | §3 D3 | medium | 4(purge) |
-| D9 | demo fixture on a live route (`DEMO-CASE-001`) | `App.tsx:318` | medium | 4(e) |
-| D10 | `initializeBlockchain`/`getBlockchain`/`BlockchainBlock` naming | `akhandLedger.ts:127,247` | medium | 4(e)/4(d) |
+| D9 | **closed** (`d2d26bb2`): route, wrapper, lazy import and both component copies deleted. | `App.tsx:318` | medium | 4(e)
+| D10 | **closed** (`174d9484`): `initializeLedger` / `getLedgerEntries` / `LedgerEntry`; `App.tsx`, judge `HashVerifier`, `src/types.ts` and the harness moved in the same commit. (`getLedger` and `LedgerRecord` were already taken by two different shapes — using them would have created a new ambiguity instead of ending one.) | `akhandLedger.ts:127,247` | medium | 4(e)/4(d)
 | D11 | 18 of 23 locale tables unreachable, all in the entry chunk; two translation files drifting | §10 | medium | 4(c) |
 | D12 | hardcoded `INTEGRITY_SECRET`; auth is a role picker | `AuthContext.tsx:24` | medium | decide, §14 Q6 |
 | D13 | `crypto-js` still in auth while the trust layer is WebCrypto | `AuthContext.tsx:7` | low | 4(b) |
 | D14 | missing `incidentDate` resolves to the stricter branch | `forensicInterlock.ts` | low-but-legal | 4(a)-i note |
-| D15 | `eslint` was not a declared dependency, so `npm run lint` could not run | fixed in §0 (`eslint@^8.57`, matching the legacy `.eslintrc.json` format); the gate now **runs and is red**: 154 problems in 56 files (42 errors: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `@typescript-eslint/ban-ts-comment`, 2 `react-hooks/exhaustive-deps`; 112 warnings: 100 `no-explicit-any`, 12 `no-unused-vars`) | medium | 4(purge) — deleting the 112 unreachable files removes roughly half the offenders; do **not** add to CI until green |
-| D17 | 3 `@ts-ignore` comments, against the standing "no @ts-ignore" standard | `src/features/main/services/geminiService.ts:158`, `features/main/components/LitigantHappiness.tsx:29`, `features/nationals/components/LitigantHappiness.tsx:29` (last one dies with D8) | medium | 4(e) — fix the real type instead of suppressing |
+| D15 | **half-closed** (`4aa7620e`): `eslint@^8.57` is now a devDependency so the declared gate runs — and it is red (154 problems in 56 files: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `ban-ts-comment`, 2 `exhaustive-deps`; 100 `no-explicit-any`). Not added to CI yet; the purge block removes roughly half the offenders. | fixed in §0 (`eslint@^8.57`, matching the legacy `.eslintrc.json` format); the gate now **runs and is red**: 154 problems in 56 files (42 errors: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `@typescript-eslint/ban-ts-comment`, 2 `react-hooks/exhaustive-deps`; 112 warnings: 100 `no-explicit-any`, 12 `no-unused-vars`) | medium | 4(purge) — deleting the 112 unreachable files removes roughly half the offenders; do **not** add to CI until green
+| D17 | **closed** (`e3642d9d`): all three suppressions gone, and each was hiding something — see the 4(e) execution log. Enforced by harness group H-era check "No compiler suppressions anywhere in src/", proven falsifiable by planting a directive and watching it fail. | `src/features/main/services/geminiService.ts:158`, `features/main/components/LitigantHappiness.tsx:29`, `features/nationals/components/LitigantHappiness.tsx:29` (last one dies with D8) | medium | 4(e) — fix the real type instead of suppressing
 | D16 | `docs/` exists but no user-facing README of what is/isn't implemented | — | low | 4(e) |
 
 ## 14. What I need from you (every answer changes what I write first)
