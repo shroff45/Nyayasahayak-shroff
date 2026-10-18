@@ -494,7 +494,7 @@ Example: 'Subject reported a theft incident near Gandhi Chowk around 3:00 PM...'
                                 </div>
                                 <p className="text-xs text-center text-slate-500 mt-3 flex items-center justify-center gap-1">
                                     <Shield className="w-3 h-3" />
-                                    Action recorded on Akhand Ledger (Immutable Blockchain)
+                                    Action recorded in the Akhand Ledger (tamper-evident, this device only)
                                 </p>
                             </div>
                         </FloatingCard>

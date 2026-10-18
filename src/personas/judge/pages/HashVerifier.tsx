@@ -9,13 +9,34 @@ import {
     Database, Lock, AlertTriangle
 } from 'lucide-react';
 import { computeFileHash, formatHashForDisplay, HashProgress } from '../../../core/services/evidenceHasher';
-import { getBlockchain } from '../../../services/akhandLedger';
+import { getBlockchain, getLedger } from '../../../services/akhandLedger';
 import { BlockchainBlock } from '../../../types';
+
+/**
+ * A ledger record commits to the exhibit digest in one of several places depending on which
+ * screen wrote it, so the comparison checks each - case-insensitively, because hex digests
+ * arrive upper-cased from lab reports and lower-cased from browsers.
+ */
+const blockCommitsToDigest = (block: BlockchainBlock, digest: string): boolean => {
+    const target = digest.trim().toLowerCase();
+    const data = (block.data ?? {}) as Record<string, unknown>;
+    const candidates: unknown[] = [data.hash, data.sha256, data.leafDigest];
+    if (typeof data.caseNotes === 'string') {
+        try {
+            const notes = JSON.parse(data.caseNotes) as { hash?: string };
+            candidates.push(notes.hash);
+        } catch {
+            // caseNotes is free text for some record kinds; not JSON, not an error.
+        }
+    }
+    return candidates.some((c) => typeof c === 'string' && c.trim().toLowerCase() === target);
+};
 
 const HashVerifier: React.FC = () => {
     const [isVerifying, setIsVerifying] = useState(false);
     const [progress, setProgress] = useState<HashProgress | null>(null);
-    const [result, setResult] = useState<'IDLE' | 'MATCH' | 'NO_MATCH'>('IDLE');
+    const [result, setResult] = useState<'IDLE' | 'MATCH' | 'NO_MATCH' | 'ERROR'>('IDLE');
+    const [detail, setDetail] = useState<string>('');
     const [matchedBlock, setMatchedBlock] = useState<BlockchainBlock | null>(null);
     const [currentFile, setCurrentFile] = useState<File | null>(null);
     const [computedHash, setComputedHash] = useState<string>('');
@@ -26,50 +47,50 @@ const HashVerifier: React.FC = () => {
     const handleVerify = useCallback(async (file: File) => {
         if (!file) return;
 
-        // Reset state
         setIsVerifying(true);
         setResult('IDLE');
         setMatchedBlock(null);
+        setDetail('');
         setCurrentFile(file);
         setComputedHash('');
         setProgress({ bytesProcessed: 0, totalBytes: file.size, percentComplete: 0 });
 
         try {
-            // 1. Compute Hash (Independent Client-Side Verification)
+            // 1. Recompute the digest here. The whole point of a judicial check is that this
+            //    number does not come from the ledger or from the police station's copy.
             const hashResult = await computeFileHash(file, (p) => setProgress(p));
             setComputedHash(hashResult.hash);
 
-            // 2. Query the Akhand Ledger (Blockchain Scan)
-            // In a real app, this would query the immutable ledger nodes
-            const chain = getBlockchain();
+            // 2. Find the ledger record that committed to this digest - the digest is stored in
+            //    the record payload (or in its caseNotes JSON for records written before that).
+            const chain = await getBlockchain();
+            const foundBlock = chain.find((block) => blockCommitsToDigest(block, hashResult.hash));
 
-            // Simulate network latency for dramatic effect
-            setTimeout(() => {
-                // Find block containing this hash
-                // Note: We check if the hash exists in the 'caseNotes' JSON string or the data field
-                const foundBlock = chain.find(block => {
-                    // We check strict hash equality
-                    try {
-                        const notes = JSON.parse(block.data?.caseNotes || '{}');
-                        return notes.hash === hashResult.hash;
-                    } catch {
-                        return false;
-                    }
-                });
+            if (!foundBlock) {
+                setResult('NO_MATCH');
+                setDetail(
+                    'No record on this device commits to this digest. That is not proof of tampering: ' +
+                    'the exhibit may have been anchored on another terminal. Request its signed certificate ' +
+                    'and verify it here.'
+                );
+                return;
+            }
 
-                if (foundBlock) {
-                    setMatchedBlock(foundBlock);
-                    setResult('MATCH');
-                } else {
-                    setResult('NO_MATCH');
-                }
-                setIsVerifying(false);
-            }, 1500);
-
+            // 3. Verify the record itself: payload digest, Merkle inclusion, and the anchor signature.
+            const ledger = await getLedger();
+            const verdict = await ledger.verifyRecord(foundBlock.index);
+            setMatchedBlock(foundBlock);
+            setResult(verdict.ok ? 'MATCH' : 'NO_MATCH');
+            setDetail(verdict.reason);
         } catch (error) {
-            console.error("Verification failed", error);
+            // Previously every exception fell through to NO_MATCH, which tells a judge "this
+            // exhibit is not in the ledger" when the real fact is "the check could not run".
+            // A storage error must never read like an integrity finding.
+            console.error('Verification failed', error);
+            setResult('ERROR');
+            setDetail(error instanceof Error ? error.message : 'Unknown error while verifying.');
+        } finally {
             setIsVerifying(false);
-            setResult('NO_MATCH');
         }
     }, []);
 
@@ -212,6 +233,24 @@ const HashVerifier: React.FC = () => {
                         </div>
                     )}
 
+                    {result === 'ERROR' && (
+                        <div className="bg-slate-800/50 rounded-xl border border-amber-500/50 p-6 flex items-start gap-4">
+                            <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0" />
+                            <div>
+                                <h2 className="text-lg font-bold text-amber-300">Verification could not be completed</h2>
+                                <p className="text-sm text-slate-300 mt-1">{detail}</p>
+                                <p className="text-xs text-slate-400 mt-2">
+                                    This is a tool or storage failure, <span className="font-semibold">not</span> a finding
+                                    about the evidence. Nothing should be inferred about the exhibit until the check runs.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {result !== 'IDLE' && result !== 'ERROR' && detail && (
+                        <p className="text-xs text-slate-400 px-1 pb-2">{detail}</p>
+                    )}
+
                     {result === 'MATCH' && matchedBlock && (
                         <div className="bg-slate-800/50 rounded-xl border border-emerald-500/50 overflow-hidden">
                             <div className="bg-emerald-500/20 p-6 border-b border-emerald-500/30 flex items-center gap-4">
@@ -220,7 +259,10 @@ const HashVerifier: React.FC = () => {
                                 </div>
                                 <div>
                                     <h2 className="text-xl font-bold text-emerald-400">✅ Integrity Verified</h2>
-                                    <p className="text-emerald-300/80 text-sm">Evidence matches the immutable ledger record.</p>
+                                    <p className="text-emerald-300/80 text-sm">
+                                        The digest recomputed here matches ledger record #{matchedBlock?.index}, whose anchor signature
+                                        verifies against a pinned key.
+                                    </p>
                                 </div>
                             </div>
 

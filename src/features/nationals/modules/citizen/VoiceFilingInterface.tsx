@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Case, Language, UrgencyLevel } from '../../core/types';
-import { addBlock } from '../../shared/services/akhandLedger';
+import { addBlock } from '../../../../services/akhandLedger';
 
 import { v4 as uuidv4 } from 'uuid';
 import { Mic, MicOff, Loader2, CheckCircle, AlertTriangle, FileText, Globe } from 'lucide-react';
@@ -147,14 +147,24 @@ const VoiceFilingInterface: React.FC = () => {
         };
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!extractedData) return;
 
         setSubmissionStatus('submitting');
 
-        // Simulate network + blockchain delay
-        setTimeout(() => {
-            const result = addBlock(extractedData as Case);
+        try {
+            // Real work, awaited: the record is hashed, appended to the persisted journal and
+            // Merkle-anchored before the UI says "filed". The 2 second timer this replaces made
+            // the screen look busy while nothing had happened yet, and reported success whether
+            // or not the write would have worked.
+            if (!extractedData?.id) {
+                setSubmissionStatus('error');
+                return;
+            }
+            // The id is what the ledger looks a record up by, so it is checked rather than
+            // assumed; `extractedData` is typed `Partial<Case>` by the form state even though
+            // extraction always fills it in. Unifying the two Case models is Block 4's job.
+            const result = await addBlock({ ...extractedData, id: extractedData.id });
             if (result.success) {
                 setSubmissionStatus('success');
                 setTxHash(result.blockHash);
@@ -162,7 +172,10 @@ const VoiceFilingInterface: React.FC = () => {
             } else {
                 setSubmissionStatus('error');
             }
-        }, 2000);
+        } catch (error) {
+            console.error('Ledger write failed', error);
+            setSubmissionStatus('error');
+        }
     };
 
     // Browser Compatibility Check

@@ -21,7 +21,7 @@ export const EvidenceLocker: React.FC = () => {
             type: 'Weapon (Knife)',
             description: 'Found at crime scene, sector 4 market area.',
             timestamp: '2024-11-28 14:30:00',
-            hash: 'PQC-v1:KYBER:8f7d6a91...',
+            hash: '8f7d6a914c0d2b1e5a6f7089b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6',
             custodian: 'Insp. Vikram Singh',
             status: 'SECURE'
         },
@@ -31,7 +31,7 @@ export const EvidenceLocker: React.FC = () => {
             type: 'Digital (Hard Disk)',
             description: 'CCTV Footage from Shop No. 12',
             timestamp: '2024-11-28 16:45:00',
-            hash: 'PQC-v1:KYBER:3a2b1c99...',
+            hash: '3a2b1c99d8e7f60514253647a8b9c0d1e2f3041526374859a0b1c2d3e4f50617',
             custodian: 'Cyber Cell',
             status: 'TRANSIT'
         },
@@ -41,7 +41,7 @@ export const EvidenceLocker: React.FC = () => {
             type: 'Forensic Sample',
             description: 'Blood sample from location A',
             timestamp: '2024-11-29 09:15:00',
-            hash: 'PQC-v1:KYBER:778899aa...',
+            hash: '778899aabbccddee0011223344556677889900aabbccddee0011223344556677ff',
             custodian: 'Dr. R. Gupta',
             status: 'SECURE'
         }
@@ -54,7 +54,7 @@ export const EvidenceLocker: React.FC = () => {
                     <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
                         <Lock className="text-blue-500" /> Digital Evidence Room
                     </h2>
-                    <p className="text-slate-400">Blockchain-verified Chain of Custody (Immutable Ledger)</p>
+                    <p className="text-slate-400">Chain of custody recorded in this device's ledger (tamper-evident, not immutable)</p>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
                     <div className="relative flex-1 md:w-64">

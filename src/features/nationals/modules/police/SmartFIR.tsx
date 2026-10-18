@@ -82,7 +82,7 @@ export const SmartFIR: React.FC = () => {
                         </button>
                     </div>
                     <p className="text-xs text-center text-slate-500 mt-3">
-                        Action will be recorded on immutable ledger.
+                        Action will be recorded in this device's ledger, where a later edit is detectable.
                     </p>
                 </div>
             </div>

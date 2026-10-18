@@ -134,7 +134,7 @@ export default function VoiceFilingInterface() {
             applicableLaw: applicableLawFor(nowIso)
         };
 
-        const result = addBlock(completeCase);
+        const result = await addBlock(completeCase);
         if (result.success) {
             setSubmissionSuccess(true);
             setTranscript('');

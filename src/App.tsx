@@ -323,9 +323,14 @@ const QuantumHashWrapper: React.FC = () => {
 const App: React.FC = () => {
     const { user, isAuthenticated } = useAuth();
 
-    // Initialize blockchain on mount
+    // Open the ledger on mount: loads (or creates) this device's signing key and reads back
+    // the anchored journal from storage. A failure here is reported rather than swallowed -
+    // without storage nothing can be anchored, and the UI has to say so instead of showing an
+    // empty chain that looks like "no evidence yet".
     useEffect(() => {
-        initializeBlockchain();
+        initializeBlockchain().catch((error) => {
+            console.error('Ledger unavailable:', error);
+        });
     }, []);
 
     // Theme management
