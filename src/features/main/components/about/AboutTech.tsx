@@ -31,32 +31,32 @@ const AboutTech: React.FC<AboutTechProps> = ({ t: _t }) => {
         {
             id: 'ai',
             icon: <Sparkles className="w-6 h-6" aria-hidden="true" />,
-            title: 'Gemini AI',
-            description: 'Advanced reasoning and multilingual support built on Google\'s latest AI'
+            title: 'Gemini AI, with your key',
+            description: 'One client, one model name, a key you supply in .env. It is the only part of this app that talks to anyone, and it is not in the integrity path.'
         },
         {
-            id: 'blockchain',
+            id: 'ledger',
             icon: <Database className="w-6 h-6" aria-hidden="true" />,
-            title: 'Tamper-evident ledger',
+            title: 'Tamper-evident journal',
             description: 'Exhibit digests are recorded in a local journal, batched into a Merkle tree, and the root is signed by this terminal\'s pinned key. One record can be exported as a certificate a third party verifies offline.'
         },
         {
             id: 'languages',
             icon: <Globe className="w-6 h-6" aria-hidden="true" />,
-            title: '22 Languages',
-            description: 'From Hindi to Sanskrit, Kashmiri to Tamil — full regional coverage'
+            title: '23 Interface Languages',
+            description: 'Hindi, Tamil, Telugu, Sanskrit and nineteen more for the chrome, the prompts and the certificates. Model fluency in each is not promised here.'
         },
         {
             id: 'security',
             icon: <Lock className="w-6 h-6" aria-hidden="true" />,
-            title: 'Court-Grade Security',
-            description: 'End-to-end encryption meeting judicial data protection standards'
+            title: 'Nothing to intercept',
+            description: 'The integrity path runs locally: SHA-256 over your bytes, an append-only journal in browser storage, a Merkle root signed by a key pinned in the bundle. No transport is involved, so no claim about encryption in transit is made.'
         },
         {
             id: 'inference',
             icon: <Cpu className="w-6 h-6" aria-hidden="true" />,
-            title: 'Real-Time Inference',
-            description: 'AI responses in seconds, not minutes — even on complex legal queries'
+            title: 'One Call, When Configured',
+            description: 'A screen that wants the model says "No language model is configured on this build." and stops. It does not fall back to an invented answer.'
         },
         {
             id: 'stack',
@@ -113,20 +113,21 @@ const AboutTech: React.FC<AboutTechProps> = ({ t: _t }) => {
                             Built on Solid Foundations
                         </h2>
                         <p className="text-lg text-[var(--mid)] mb-4 leading-relaxed">
-                            Enterprise-grade security meets cutting-edge AI. Every component selected
-                            for reliability, performance, and alignment with emerging ethical AI guidelines
-                            for Indian courts.
+                            A browser bundle, a language model you configure yourself, and a journal
+                            that stays on the machine. No claims about grading, certifying or aligning
+                            this with anyone's security framework - what the code does is described below
+                            and can be read in the repository.
                         </p>
                         <p className="text-[var(--low)] mb-8">
-                            No black boxes. Full transparency in how we process, store, and protect
-                            judicial data.
+                            One thing is not transparent, and it is worth saying: text you send to the
+                            model leaves your machine under Google's terms. The ledger never does.
                         </p>
 
                         {/* Trust badges */}
                         <div className="flex flex-wrap gap-3">
-                            <span className="chip">End-to-End Encrypted</span>
-                            <span className="chip">WCAG 2.1 AA</span>
-                            <span className="chip">e-Courts Aligned</span>
+                            <span className="chip">No server to trust</span>
+                            <span className="chip">Keyboard-navigable, reduced-motion aware</span>
+                            <span className="chip">Verifiable offline</span>
                         </div>
                     </div>
 

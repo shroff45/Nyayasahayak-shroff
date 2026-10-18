@@ -114,6 +114,7 @@ const CitizenLayout: React.FC = () => {
         { path: '/citizen/legal-hub', label: t('nav_legal_hub'), icon: BookOpen },
         { path: '/citizen/bot', label: t('nav_nyayabot'), icon: MessageCircle },
         { path: '/citizen/feedback', label: t('nav_feedback'), icon: Smile },
+        { path: '/about', label: 'About this build', icon: Smile },
     ];
 
     // Welfare quick actions - Primary

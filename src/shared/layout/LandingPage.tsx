@@ -2,7 +2,7 @@
 // NyayaSahayak - Landing Page with Unified Authentication for All Personas
 
 import { useState } from 'react';
-import { Shield, Gavel, User, ArrowRight, Activity, Lock, Building2 } from 'lucide-react';
+import { Shield, Gavel, User, ArrowRight, Activity, Building2 } from 'lucide-react';
 import { useAuth, UserRole } from '../../core/auth/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import UnifiedSignInModal from '../components/UnifiedSignInModal';
@@ -95,9 +95,9 @@ const LandingPage = () => {
                             An AI-assisted judicial interface: draft a complaint by voice, read the bail conditions the case carries, and see how long the matter has been waiting. Every exhibit is hashed and written to a ledger on this device - not to a network, and not to any court's systems.
                         </p>
                         <div className="flex items-center gap-4 text-sm font-semibold text-slate-500">
-                            <span className="flex items-center gap-1"><Lock size={14} className="text-green-600" />End-to-End Encrypted</span>
+                            <span className="flex items-center gap-1"><Shield size={14} className="text-green-600" />Nothing leaves this device</span>
                             <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                            <span>Unified Sign-In for All Roles</span>
+                            <span>Pick a role to look around - no accounts here</span>
                         </div>
                     </div>
 

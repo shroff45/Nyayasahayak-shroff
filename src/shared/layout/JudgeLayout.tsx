@@ -26,6 +26,7 @@ const JudgeLayout: React.FC = () => {
         { path: '/judge/evidence', label: 'Evidence Vault', labelHi: 'साक्ष्य भंडार', icon: Briefcase },
         { path: '/judge/custody', label: 'Chain of Custody', labelHi: 'हिरासत श्रृंखला', icon: ShieldCheck },
         { path: '/judge/bail', label: 'Smart Bail', labelHi: 'स्मार्ट जमानत', icon: Scale },
+        { path: '/about', label: 'About this build', icon: FileText },
         { path: '/judge/orders', label: 'Orders History', labelHi: 'आदेश इतिहास', icon: FileText },
     ];
 

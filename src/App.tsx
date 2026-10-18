@@ -3,7 +3,7 @@
 // Wires ALL 51+ features with ZERO feature loss
 
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useNavigate, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, ProtectedRoute } from './core/auth/AuthContext';
 import { AppSettingsProvider } from './core/context/AppSettingsContext';
 
@@ -39,6 +39,7 @@ const LegalTechHub = React.lazy(() => import('./features/main/components/LegalTe
 const LitigantHappiness = React.lazy(() => import('./features/main/components/LitigantHappiness'));
 const History = React.lazy(() => import('./features/main/components/History'));
 const DocumentIntegrityPage = React.lazy(() => import('./features/main/components/DocumentIntegrityPage'));
+const About = React.lazy(() => import('./features/main/components/About'));
 
 // Judge-specific Components
 const DraftJudgmentPanel = React.lazy(() => import('./components/DraftJudgmentPanel'));
@@ -236,6 +237,18 @@ const IntegrityCheckWrapper: React.FC = () => {
     );
 };
 
+const AboutWrapper: React.FC = () => {
+    const [language] = useState<Language>('en');
+    const { t } = useLocalization(language);
+    const navigate = useNavigate();
+
+    return (
+        <React.Suspense fallback={<LoadingFallback />}>
+            <About t={t} onGetStarted={() => navigate('/')} />
+        </React.Suspense>
+    );
+};
+
 const DraftJudgmentWrapper: React.FC = () => {
     const [language] = useState<Language>('en');
     const { t } = useLocalization(language);
@@ -358,6 +371,10 @@ const App: React.FC = () => {
                             element={<Navigate to={`/${(user.role || 'citizen').toLowerCase()}/home`} replace />}
                         />
 
+                        {/* The About page stays reachable once a role is picked - the persona sidebars
+                            link to it, and a link that only works while signed out would be a bug. */}
+                        <Route path="/about" element={<AboutWrapper />} />
+
                         {/* ================== DEV/DEMO ROUTES ================== */}
                         <Route
                             path="/integrity-sandbox/:caseId?"
@@ -471,6 +488,7 @@ const App: React.FC = () => {
         <ToastProvider>
             <Routes>
                 <Route path="/" element={<LandingPage />} />
+                <Route path="/about" element={<AboutWrapper />} />
 
                 {/* Evidence Integrity Sandbox - accessible without auth for testing */}
                 <Route

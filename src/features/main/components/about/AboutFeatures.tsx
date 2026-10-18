@@ -40,31 +40,31 @@ const AboutFeatures: React.FC<AboutFeaturesProps> = () => {
             id: 'triage',
             icon: <BarChart3 className="w-8 h-8" aria-hidden="true" />,
             title: 'AI Case Triage',
-            description: 'Automatically prioritize cases based on urgency, complexity, and legal precedent. What took hours now takes seconds.'
+            description: 'The model reads the complaint text you paste and returns an urgency, a case type and the sections it thinks apply. The intake screen shows that as a suggestion for a person to accept or edit; it is not a queue position and no court sees it.'
         },
         {
             id: 'document',
             icon: <FileText className="w-8 h-8" aria-hidden="true" />,
             title: 'Document Analysis',
-            description: 'Extract insights from any document in 22 Indian languages. OCR, translation, and legal summarization in one flow.'
+            description: 'Paste text or attach PDFs and images and the model returns parties, dates, sections and a summary. There is no OCR engine in this build: what the model is given is what you handed it.'
         },
         {
             id: 'nyayabot',
             icon: <MessageSquare className="w-8 h-8" aria-hidden="true" />,
             title: 'NYAYABOT Assistant',
-            description: 'Your 24/7 legal research assistant with grounded, cited responses. Ask in Hindi, get answers in Hindi.'
+            description: 'Chat with the model in the language you picked, with the pages it was grounded on listed under the answer. In this build the assistant is scoped by a system instruction to civics, history and geography, so it declines legal questions - see docs, and defect D21.'
         },
         {
             id: 'mapping',
             icon: <GitBranch className="w-8 h-8" aria-hidden="true" />,
             title: 'Case Mapping',
-            description: 'Visualize relationships between cases, parties, and precedents. See the forest and the trees.'
+            description: 'A party-and-precedent diagram drawn from the model\'s reading of the case text you supply. It is a picture of your paste, not of a court record.'
         },
         {
             id: 'timeline',
             icon: <Clock className="w-8 h-8" aria-hidden="true" />,
             title: 'Justice Timeline',
-            description: 'Track case progress against national benchmarks. Identify delays before they become backlogs.'
+            description: 'Compares the dates you recorded against the deadlines this build encodes. Those deadlines are readable in the source, and docs/TRUST_MODEL.md marks the ones that are simplifications.'
         },
         {
             id: 'integrity',
@@ -117,8 +117,9 @@ const AboutFeatures: React.FC<AboutFeaturesProps> = () => {
                         From Overwhelming to Understandable
                     </h2>
                     <p className="text-lg text-[var(--mid)] max-w-2xl mx-auto">
-                        AI-assisted triage, translation, and drafting — designed for India's judicial system,
-                        accessible in all 22 scheduled languages.
+                        AI-assisted triage, drafting and an interface carried in 23 language tables.
+                        The model's answer quality in each of those languages is not something this page
+                        can promise; the interface text is, because it is in the repository.
                     </p>
                 </div>
 

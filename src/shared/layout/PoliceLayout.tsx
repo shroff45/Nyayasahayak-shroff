@@ -30,6 +30,7 @@ const PoliceLayout: React.FC = () => {
         { path: '/police/roster', label: 'Duty Roster', icon: Calendar },
         { path: '/police/patrol', label: 'Patrol Map', icon: Map },
         { path: '/police/bot', label: 'NyayaBot', icon: MessageSquare },
+        { path: '/about', label: 'About this build', icon: MessageSquare },
     ];
 
     const handleLogout = () => {
