@@ -52,7 +52,7 @@ const AboutFeatures: React.FC<AboutFeaturesProps> = () => {
             id: 'nyayabot',
             icon: <MessageSquare className="w-8 h-8" aria-hidden="true" />,
             title: 'NYAYABOT Assistant',
-            description: 'Chat with the model in the language you picked, with the pages it was grounded on listed under the answer. In this build the assistant is scoped by a system instruction to civics, history and geography, so it declines legal questions - see docs, and defect D21.'
+            description: 'Chat with the model in the language you picked, with the pages it was grounded on listed under the answer. Its system instruction scopes it to civics, history and geography, so ask it about bail and it will decline - that limit is in the code, and this page is not going to pretend otherwise.'
         },
         {
             id: 'mapping',
