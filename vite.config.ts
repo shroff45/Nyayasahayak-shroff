@@ -13,5 +13,11 @@ export default defineConfig({
             '@types': path.resolve(__dirname, './src/types'),
         },
     },
+    server: {
+        // Vite refuses requests whose Host header is not localhost, which blocks tunnelled and
+        // sandboxed previews. Pass the hostname(s) you reach it by; without this the default
+        // same-origin protection stays in force.
+        allowedHosts: process.env.ALLOWED_HOSTS ? process.env.ALLOWED_HOSTS.split(',') : undefined,
+    },
 })
 

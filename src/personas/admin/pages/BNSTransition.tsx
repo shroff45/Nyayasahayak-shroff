@@ -3,10 +3,7 @@
 // IPC to BNS Migration Dashboard
 
 import React from 'react';
-import {
-    TrendingUp, Scale, ArrowRight, CheckCircle,
-    Clock, AlertTriangle, BarChart3, PieChart
-} from 'lucide-react';
+import { TrendingUp, Scale, ArrowRight, CheckCircle, Clock, BarChart3, PieChart } from 'lucide-react';
 
 // Mock transition data
 const TRANSITION_STATS = {

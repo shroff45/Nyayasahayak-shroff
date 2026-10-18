@@ -4,9 +4,7 @@
 
 import React, { useState } from 'react';
 import {
-    Scale, Search, MapPin, Phone, ExternalLink,
-    CheckCircle, XCircle, HelpCircle, Users, FileText
-} from 'lucide-react';
+    Scale, MapPin, Phone, ExternalLink, CheckCircle, HelpCircle } from 'lucide-react';
 
 interface FreeLegalAidFinderProps {
     isOpen: boolean;

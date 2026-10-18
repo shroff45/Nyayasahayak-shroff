@@ -166,7 +166,7 @@ export const SmartSearch: React.FC = () => {
                 {/* Footer */}
                 <div className="p-3 border-t border-white/5 bg-black/20 text-[10px] text-white/30 flex justify-between">
                     <div>
-                        <span className="font-bold text-ns-primary-500">Quantum Search</span> v1.0
+                        <span className="font-bold text-ns-primary-500">AI Search</span> v1.0
                     </div>
                     <div className="flex gap-3">
                         <span>Use <kbd className="font-mono bg-white/10 px-1 rounded">↑</kbd> <kbd className="font-mono bg-white/10 px-1 rounded">↓</kbd> to navigate</span>

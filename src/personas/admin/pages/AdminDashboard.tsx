@@ -5,22 +5,8 @@
 
 import React, { useState, useCallback } from 'react';
 import {
-    BarChart3,
-    TrendingUp,
-    MapPin,
-    Scale,
-    Clock,
-    AlertCircle,
-    CheckCircle2,
-    Activity,
-    Download,
-    Shield,
-    Globe,
-    X,
-    Eye
-} from 'lucide-react';
+    BarChart3, TrendingUp, MapPin, Scale, Clock, AlertCircle, CheckCircle2, Activity, Download, Shield, Globe } from 'lucide-react';
 import AnimatedBackground from '../../../shared/components/3d/AnimatedBackground';
-import FloatingCard from '../../../shared/components/3d/FloatingCard';
 import { useToast } from '../../../shared/hooks/useToast';
 
 // Mock District Pendency Data
@@ -250,11 +236,13 @@ const AdminDashboard: React.FC = () => {
                         </div>
 
                         {/* Selected District Detail */}
-                        {selectedDistrict && (
+                        {selectedDistrict && selectedDistrictData && (
                             <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
-                                <p className="text-sm text-white font-medium">{selectedDistrict}</p>
+                                <p className="text-sm text-white font-medium">{selectedDistrictData.name}</p>
                                 <p className="text-xs text-slate-400">
-                                    {districtPendency.find(d => d.name === selectedDistrict)?.pending.toLocaleString()} pending cases
+                                    {selectedDistrictData.pending.toLocaleString()} pending •{' '}
+                                    {selectedDistrictData.disposed.toLocaleString()} disposed • backlog risk:{' '}
+                                    {selectedDistrictData.rating}
                                 </p>
                             </div>
                         )}

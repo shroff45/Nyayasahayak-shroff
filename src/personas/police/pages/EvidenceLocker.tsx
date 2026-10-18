@@ -8,7 +8,7 @@ import {
     RefreshCw, Lock, Clock, Hash, Link2, Download, Eye, Loader2, Camera, Gavel
 } from 'lucide-react';
 import { computeFileHash, formatHashForDisplay, HashProgress } from '../../../core/services/evidenceHasher';
-import { addBlock, getBlockchain } from '../../../services/akhandLedger';
+import { addBlock, getBlockchain, getLedger } from '../../../services/akhandLedger';
 import { useToast } from '../../../shared/hooks/useToast';
 import { mockDelay } from '../../../shared/utils/mockApi';
 
@@ -26,7 +26,14 @@ interface EvidenceArtifact {
     blockHash: string;
     integrityStatus: 'VERIFIED' | 'PENDING' | 'HASHING' | 'TAMPERED';
     chainPosition: number;
-    pqcProtected: boolean;
+    /**
+     * Position of this exhibit inside the persisted ledger journal. Kept so the certificate can
+     * re-verify the record on demand instead of freezing whatever status was set at upload.
+     */
+    ledgerIndex: number;
+    signerFingerprint?: string;
+    anchorIndex?: number;
+    merkleRoot?: string;
 }
 
 // ============================================
@@ -103,8 +110,9 @@ const EvidenceLocker: React.FC = () => {
                 setHashProgress(progress);
             });
 
-            // Step 2: Register on Akhand Ledger (Blockchain)
-            const blockResult = addBlock({
+            // Step 2: Register on the Akhand Ledger - hashed, appended to the persisted journal
+            // and Merkle-anchored, all awaited here so the status below reflects a completed write.
+            const blockResult = await addBlock({
                 id: `EV-${Date.now()}`,
                 cnrNumber: `EVIDENCE/${new Date().getFullYear()}/${Math.floor(Math.random() * 100000)}`,
                 complainant: 'SYSTEM',
@@ -128,7 +136,10 @@ const EvidenceLocker: React.FC = () => {
                 adjournmentsCount: 0
             });
 
-            // Step 3: Create evidence artifact record
+            // Step 3: Create the evidence artifact record.
+            const chain = await getBlockchain();
+            const ledger = await getLedger();
+            const verdict = await ledger.verifyRecord(blockResult.index);
             const newArtifact: EvidenceArtifact = {
                 id: `EV-${Date.now()}`,
                 fileName: file.name,
@@ -137,15 +148,35 @@ const EvidenceLocker: React.FC = () => {
                 uploadTime: new Date().toISOString(),
                 hash: hashResult.hash,
                 blockchainId: blockResult.transactionId,
-                blockHash: blockResult.blockHash,
-                integrityStatus: 'VERIFIED',
-                chainPosition: getBlockchain().length,
-                pqcProtected: blockResult.blockHash.startsWith('PQC-v1:KYBER')
+                blockHash: blockResult.leafDigest,
+                // Was 'VERIFIED' unconditionally, before any verification had run. Now it reflects
+                // the ledger's answer for this record.
+                integrityStatus: verdict.ok ? 'VERIFIED' : 'PENDING',
+                chainPosition: chain.length,
+                ledgerIndex: blockResult.index,
+                signerFingerprint: verdict.signerFingerprint,
+                anchorIndex: verdict.anchorIndex,
             };
 
             setArtifacts(prev => [newArtifact, ...prev]);
+            if (verdict.ok) {
+                showToast(`Anchored to the ledger as record #${blockResult.index}`, 'success', 3000);
+            } else {
+                showToast(
+                    `Hashed and recorded, but not yet verifiable: ${verdict.reason}`,
+                    'info',
+                    6000
+                );
+            }
         } catch (error) {
+            // A failed ledger write used to be console-only: the uploader saw a spinner stop and
+            // nothing else, so an exhibit could be believed filed when it was never recorded.
             console.error('Evidence processing failed:', error);
+            showToast(
+                `Evidence was NOT recorded: ${error instanceof Error ? error.message : 'ledger unavailable'}`,
+                'error',
+                8000
+            );
         } finally {
             setIsProcessing(false);
             setHashProgress(null);
@@ -244,7 +275,56 @@ const EvidenceLocker: React.FC = () => {
         try {
             await mockDelay(1000);
 
-            const cert = `BSA SECTION 63 CERTIFICATE\n===========================\nFile: ${artifact.fileName}\nHash: ${artifact.hash}\nBlockchain ID: ${artifact.blockchainId}\nBlock Position: #${artifact.chainPosition}\nTimestamp: ${artifact.uploadTime}\nIntegrity: ${artifact.integrityStatus}\nPQC Protected: ${artifact.pqcProtected}\n\nThis document certifies compliance with BSA Section 63.`;
+            // Re-verify at export time rather than printing the status captured at upload: a
+            // certificate that says "VERIFIED" because the file once hashed correctly is exactly
+            // the kind of stale assurance a court should be able to catch.
+            let liveStatus = 'UNVERIFIED';
+            let liveReason = 'The ledger could not be reached when this certificate was generated.';
+            let signer = artifact.signerFingerprint ?? 'unknown';
+            let merkleRoot = 'not anchored';
+            try {
+                const ledger = await getLedger();
+                const verdict = await ledger.verifyRecord(artifact.ledgerIndex);
+                const [anchor] = (await ledger.anchors()).filter(
+                    (a) => artifact.ledgerIndex >= a.batchStart && artifact.ledgerIndex <= a.batchEnd
+                ).slice(-1);
+                liveStatus = verdict.ok ? 'VERIFIED' : 'FAILED';
+                liveReason = verdict.reason;
+                signer = verdict.signerFingerprint ?? signer;
+                if (anchor) {
+                    merkleRoot = `anchor #${anchor.anchorIndex}, Merkle root ${anchor.merkleRoot} over ${anchor.leafCount} record(s)`;
+                }
+            } catch (error) {
+                liveReason = error instanceof Error ? error.message : String(error);
+            }
+
+            const cert = [
+                'EVIDENCE INTEGRITY RECORD',
+                'Issued alongside a certificate under BSA s.63(4)',
+                '===========================================',
+                `File name          : ${artifact.fileName}`,
+                `File size          : ${artifact.fileSize} bytes`,
+                `SHA-256 digest     : ${artifact.hash}`,
+                `Recorded (device)  : ${artifact.uploadTime}`,
+                `Ledger record      : #${artifact.ledgerIndex} (${artifact.blockHash})`,
+                `Anchoring          : ${merkleRoot}`,
+                `Signed by key      : ${signer}`,
+                `Verification now   : ${liveStatus}`,
+                `Verification note  : ${liveReason}`,
+                '',
+                'WHAT THIS RECORD ESTABLISHES',
+                '  That the bytes of this file produced the digest above, computed in this browser',
+                '  at the stated time, and that the digest was written to a tamper-evident journal',
+                '  whose contents can be re-checked offline against a signed Merkle anchor.',
+                '',
+                'WHAT IT DOES NOT ESTABLISH',
+                '  Who held the file, where it was seized, or that a court will admit it. A BSA',
+                '  s.63(4) Part A certificate must also state the device used, the person operating',
+                '  it, and the period it was under their control - use the Section 63 Certificate',
+                '  Generator for that. This record supplements it; it does not replace it.',
+                '',
+                `Generated: ${new Date().toISOString()}`,
+            ].join('\n');
             const blob = new Blob([cert], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -271,12 +351,14 @@ const EvidenceLocker: React.FC = () => {
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold">Evidence Locker</h1>
-                        <p className="text-slate-400 text-sm">SAM-3 Protected • BSA Section 63 Compliant</p>
+                        <p className="text-slate-400 text-sm">
+                            SAM-3 evidence hashing · digests anchored to this device's ledger
+                        </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-4 mt-4 text-xs">
                     <span className="flex items-center gap-1 text-emerald-400">
-                        <Shield className="w-3 h-3" /> PQC Encryption (CRYSTALS-Kyber)
+                        <Shield className="w-3 h-3" /> ECDSA P-256 anchor
                     </span>
                     <span className="flex items-center gap-1 text-blue-400">
                         <Link2 className="w-3 h-3" /> Akhand Ledger Connected
@@ -426,9 +508,9 @@ const EvidenceLocker: React.FC = () => {
                                         </>
                                     )}
                                 </div>
-                                {artifact.pqcProtected && (
+                                {artifact.anchorIndex !== undefined && (
                                     <span className="text-[10px] text-purple-400 flex items-center gap-1 justify-end">
-                                        <Shield className="w-3 h-3" /> PQC Protected
+                                        <Shield className="w-3 h-3" /> Anchored #{artifact.anchorIndex}
                                     </span>
                                 )}
                             </div>
@@ -470,8 +552,8 @@ const EvidenceLocker: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                         <Hash className="w-4 h-4 text-slate-500" />
                                         <div>
-                                            <p className="text-slate-500">Algorithm</p>
-                                            <p className="text-slate-300">SHA-256 + Kyber-1024</p>
+                                            <p className="text-slate-500">Digest</p>
+                                            <p className="text-slate-300">SHA-256 (WebCrypto)</p>
                                         </div>
                                     </div>
                                 </div>

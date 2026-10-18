@@ -4,9 +4,7 @@
 
 import React, { useState } from 'react';
 import {
-    ListFilter, Clock, Scale, AlertTriangle,
-    Search, ChevronRight, FileText
-} from 'lucide-react';
+    ListFilter, Clock, Search, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface QueueCase {

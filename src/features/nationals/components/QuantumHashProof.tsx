@@ -22,11 +22,11 @@ const QuantumHashProof: React.FC = () => {
                 <div className="mt-8 space-y-3">
                     <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Algorithm:</span>
-                        <span className="font-medium text-blue-600">CRYSTALS-Kyber-1024</span>
+                        <span className="font-medium text-blue-600">SHA-256 digest · ECDSA P-256 anchor</span>
                     </div>
                     <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Status:</span>
-                        <span className="font-medium text-green-600">IMMUTABLE</span>
+                        <span className="font-medium text-green-600">RECORDED, NOT YET VERIFIED</span>
                     </div>
                 </div>
             </div>

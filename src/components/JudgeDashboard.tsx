@@ -6,6 +6,7 @@ import {
     GraphLink
 } from '../types';
 import { searchLegalPrecedents } from '../services/vidhikRAG';
+import { applicableLawFor } from '../core/workspace/legacyCaseAdapter';
 import CaseQueue from './CaseQueue';
 import CaseDetailsPanel from './CaseDetailsPanel';
 import DraftJudgmentPanel from './DraftJudgmentPanel';
@@ -28,6 +29,7 @@ export default function JudgeDashboard({ t }: JudgeDashboardProps) {
         const mockCases: Case[] = [
             {
                 id: "C001",
+                incidentDate: "2024-03-14",
                 cnrNumber: "DL/2024/00001",
                 complainant: "State of Delhi",
                 respondent: "Rahul Kumar",
@@ -39,10 +41,13 @@ export default function JudgeDashboard({ t }: JudgeDashboardProps) {
                 urgency: "HIGH",
                 sectionsInvoked: ["IPC 379"],
                 adjournmentsCount: 0,
-                lawyerId: "L001"
+                lawyerId: "L001",
+                isZeroFir: false,
+                applicableLaw: applicableLawFor("2024-03-14")
             },
             {
                 id: "C002",
+                incidentDate: "2024-02-02",
                 cnrNumber: "DL/2024/00045",
                 complainant: "Amit Shah",
                 respondent: "Vijay Mallya",
@@ -54,10 +59,13 @@ export default function JudgeDashboard({ t }: JudgeDashboardProps) {
                 urgency: "MEDIUM",
                 sectionsInvoked: ["Contract Act"],
                 adjournmentsCount: 2,
-                lawyerId: "L002"
+                lawyerId: "L002",
+                isZeroFir: false,
+                applicableLaw: applicableLawFor("2024-02-02")
             },
             {
                 id: "C003",
+                incidentDate: "2024-01-20",
                 cnrNumber: "DL/2024/00112",
                 complainant: "Priya Singh",
                 respondent: "Rohan Singh",
@@ -69,7 +77,9 @@ export default function JudgeDashboard({ t }: JudgeDashboardProps) {
                 urgency: "LOW",
                 sectionsInvoked: ["HMA 13(1)"],
                 adjournmentsCount: 1,
-                lawyerId: "L003"
+                lawyerId: "L003",
+                isZeroFir: false,
+                applicableLaw: applicableLawFor("2024-01-20")
             }
         ];
         setCases(mockCases);

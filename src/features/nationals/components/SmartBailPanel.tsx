@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { SmartBailContract } from '../core/types';
-import { verifyCourtAppearance, releaseBailAmount } from '../shared/services/akhandLedger';
+import {
+    verifyCourtAppearance,
+    releaseBailAmount,
+    getBailContractStatus,
+} from '../../../services/akhandLedger';
 import { ShieldCheck, CalendarCheck, Wallet, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface SmartBailPanelProps {
@@ -11,30 +15,41 @@ const SmartBailPanel: React.FC<SmartBailPanelProps> = ({ contract }) => {
     const [localContract, setLocalContract] = useState(contract);
     const [message, setMessage] = useState('');
 
-    const handleVerifyAppearance = () => {
-        // Simulate verifying the next pending date
-        const nextDate = localContract.releaseConditions.courtDates.find(d => !localContract.verifiedAppearances?.includes(d));
-        if (!nextDate) return;
-
-        const result = verifyCourtAppearance(localContract.transactionId, nextDate, "mock-bio-hash");
-        if (result.success) {
-            setLocalContract(prev => ({
-                ...prev,
-                verifiedAppearances: [...(prev.verifiedAppearances || []), nextDate],
-                status: result.status,
-                complianceScore: (((prev.verifiedAppearances?.length || 0) + 1) / prev.releaseConditions.courtDates.length) * 100,
-                refundEligible: result.status === 'ACTIVE'
-            }));
-            setMessage(`Verified appearance for ${nextDate}`);
+    const handleVerifyAppearance = async () => {
+        // The next scheduled date this contract has not yet recorded an appearance against.
+        const nextDate = localContract.releaseConditions.courtDates.find(
+            (d) => !localContract.verifiedAppearances?.includes(d)
+        );
+        if (!nextDate) {
+            setMessage('Every scheduled appearance is already recorded for this contract.');
+            return;
         }
+
+        // Biometric capture does not exist in this build. The ledger stores the explicit
+        // placeholder below rather than a random string shaped like a template hash, so nobody
+        // can mistake the record for a real biometric match.
+        const result = await verifyCourtAppearance(localContract.transactionId, nextDate, 'NOT-CAPTURED');
+        if (result.success) {
+            const contract = await getBailContractStatus(localContract.transactionId);
+            setLocalContract((prev) =>
+                contract ?? {
+                    ...prev,
+                    verifiedAppearances: [...(prev.verifiedAppearances || []), nextDate],
+                    status: result.status as typeof prev.status,
+                    complianceScore: result.complianceScore,
+                    refundEligible: result.status === 'ACTIVE',
+                }
+            );
+        }
+        setMessage(result.message);
     };
 
-    const handleReleaseRefund = () => {
-        const result = releaseBailAmount(localContract.transactionId);
+    const handleReleaseRefund = async () => {
+        const result = await releaseBailAmount(localContract.transactionId);
         if (result.success) {
-            setLocalContract(prev => ({ ...prev, status: 'REFUNDED' }));
-            setMessage(`Refund of ₹${result.refundAmount} initiated!`);
+            setLocalContract((prev) => ({ ...prev, status: 'REFUNDED' }));
         }
+        setMessage(result.message);
     };
 
     return (

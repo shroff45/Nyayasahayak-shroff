@@ -127,6 +127,7 @@ const citizenEn = {
     voice_case_filed: 'Case Filed Successfully!',
     voice_file_another: 'File Another Case',
     voice_submit_blockchain: 'Submit to Blockchain',
+    know_your_rights: 'Know Your FIR Rights',
 };
 
 // Type for partial translations (can override any key)
@@ -134,6 +135,7 @@ type PartialTranslation = Partial<typeof citizenEn>;
 
 // Hindi - Complete translation
 const citizenHi: PartialTranslation = {
+    know_your_rights: 'अपने FIR अधिकार जानें',
     nav_home: 'होम',
     nav_file_complaint: 'शिकायत दर्ज करें',
     nav_nyayapath: 'न्यायपथ',
@@ -290,6 +292,7 @@ const citizenTe: PartialTranslation = {
 
 // Tamil
 const citizenTa: PartialTranslation = {
+    know_your_rights: 'உங்கள் FIR உரிமைகளை அறியவும்',
     nav_home: 'முகப்பு', nav_file_complaint: 'புகார் தாக்கல்', nav_nyayapath: 'நியாயபாத்',
     nav_timeline: 'காலவரிசை', nav_visual_justice: 'காட்சி நீதி', nav_legal_hub: 'சட்ட மையம்',
     nav_nyayabot: 'நியாயபாட்', nav_feedback: 'கருத்து', nav_file: 'தாக்கல்', nav_track: 'ட்ராக்',

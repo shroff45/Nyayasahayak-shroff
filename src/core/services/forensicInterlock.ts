@@ -2,20 +2,17 @@
 // NyayaSahayak v2.0.0 - BNSS Section 176(3) Forensic Interlock Service
 // Validates forensic compliance before charge sheet submission
 
-import type {
-    ForensicCompliance,
-    ForensicVideoMetadata,
-    ForensicVisitToken,
-    ComplianceCheckResult,
-    InterlockStatus,
-    OverrideReason,
-    MANDATORY_FORENSIC_SECTIONS
-} from '../../types/forensic.types';
+import type { ForensicCompliance, ForensicVideoMetadata, ForensicVisitToken, ComplianceCheckResult, OverrideReason } from '../../types/forensic.types';
 
 /**
- * BNS Cutoff Date - July 1, 2024
+ * BNS / BNSS commencement date - 1 July 2024.
+ * The Bharatiya Nyaya Sanhita, 2023 and Bharatiya Nagarik Suraksha Sanhita, 2023
+ * replaced the IPC, 1860 and CrPC, 1973 for conduct on or after this date only
+ * (BNS s.2 / BNSS s.2 read with the Commencement Notification of 27-06-2024).
+ * Anything older stays under the old codes, so the BNSS s.176(3) videography
+ * mandate cannot be retrofitted onto it.
  */
-const BNS_EFFECTIVE_DATE = new Date('2024-07-01');
+export const BNS_EFFECTIVE_DATE = new Date('2024-07-01');
 
 /**
  * Sections requiring mandatory forensic videography (≥7 years punishment)
@@ -31,8 +28,23 @@ const MANDATORY_SECTIONS = {
  */
 export const isForensicVideoMandatory = (
     sections: string[],
-    lawCode: 'BNS' | 'IPC'
-): { isMandatory: boolean; matchedSections: string[]; reason?: string } => {
+    lawCode: 'BNS' | 'IPC',
+    incidentDate?: Date
+): { isMandatory: boolean; matchedSections: string[]; reason?: string; applicableAct: 'BNS' | 'IPC' } => {
+    // Commencement guard: conduct before 01-07-2024 is tried under the IPC/CrPC, where
+    // there is no s.176(3) equivalent. Without this check the interlock would lock charge
+    // sheets in cases the new codes do not reach.
+    if (incidentDate && incidentDate < BNS_EFFECTIVE_DATE) {
+        return {
+            isMandatory: false,
+            matchedSections: [],
+            applicableAct: 'IPC',
+            reason: `Incident dated ${incidentDate.toISOString().slice(0, 10)} predates the 01-07-2024 ` +
+                `commencement of the BNS/BNSS; the IPC, 1860 and CrPC, 1973 govern it and forensic ` +
+                `videography is not mandatory under BNSS s.176(3).`
+        };
+    }
+
     const mandatoryList = MANDATORY_SECTIONS[lawCode];
     const matched = sections.filter(s => mandatoryList.includes(s));
 
@@ -40,11 +52,12 @@ export const isForensicVideoMandatory = (
         return {
             isMandatory: true,
             matchedSections: matched,
-            reason: `BNSS Section 176(3) - Offence(s) ${matched.join(', ')} attract imprisonment ≥7 years`
+            reason: `BNSS Section 176(3) - Offence(s) ${matched.join(', ')} attract imprisonment ≥7 years`,
+            applicableAct: lawCode
         };
     }
 
-    return { isMandatory: false, matchedSections: [] };
+    return { isMandatory: false, matchedSections: [], applicableAct: lawCode };
 };
 
 /**

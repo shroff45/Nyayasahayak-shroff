@@ -1,13 +1,21 @@
 // src/core/services/evidenceHasher.ts
-// NyayaSahayak v2.0.0 - BSA Section 63 Compliant Evidence Hasher
-// Implements SHA-256 chunked hashing for large files
-
-import CryptoJS from 'crypto-js';
+// BSA s.63 evidence hashing: SHA-256 over the bytes the officer is holding.
 
 /**
- * BSA Schedule requires SHA-256 hash for evidence certification
- * This service computes hashes client-side before upload
+ * This module used to run its own incremental SHA-256 through `crypto-js`. The implementation was
+ * honest - `CryptoJS.algo.SHA256.create()` with one `update()` per 5 MB slice is real streaming
+ * hashing - but it left two SHA-256 code paths in one app: the officer hashed with crypto-js while
+ * the ledger verified with WebCrypto, and any difference between the two (encoding, chunk framing,
+ * a future bug fix on one side only) would have read as tampering on the other. Both now call the
+ * same function in `src/core/trust/sha256.ts`, which is native `crypto.subtle` rather than a JS
+ * implementation, so a 200 MB CCTV clip takes seconds instead of minutes on a district-court laptop.
+ *
+ * `src/core/auth/AuthContext.tsx` still imports crypto-js for its session HMAC. That is deliberate
+ * and not oversight: converting it to WebCrypto HMAC makes the auth context async, which ripples
+ * into every consumer, and its key is a constant in the bundle either way - it deters someone
+ * editing their own localStorage, nothing more. Deserves its own block, not a side trip.
  */
+import { sha256OfFile } from '../trust/sha256.ts';
 
 export interface HashResult {
     algorithm: 'SHA-256';
@@ -24,100 +32,45 @@ export interface HashProgress {
 }
 
 /**
- * Compute SHA-256 hash of a file using chunked processing
- * Handles large files (videos, CCTV footage) without memory issues
- * 
- * @param file - The File object to hash
- * @param onProgress - Optional callback for progress updates
- * @returns Promise<HashResult>
+ * Compute the SHA-256 digest of a file, reporting progress as it goes.
+ *
+ * `sha256OfFile` reads in 4 MB slices, so a large upload never blocks the main thread long enough
+ * to lose the progress bar, and it refuses anything above its inline limit rather than quietly
+ * consuming a gigabyte: the honest failure for a 2 GB seizure video is "take the digest from the
+ * forensic lab report", not a crashed tab.
  */
 export const computeFileHash = async (
     file: File,
     onProgress?: (progress: HashProgress) => void
 ): Promise<HashResult> => {
-    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-
-    // Use WordArray for incremental hashing
-    let hashAccumulator = CryptoJS.algo.SHA256.create();
-    let bytesProcessed = 0;
-
-    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-        const start = chunkIndex * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, file.size);
-        const chunk = file.slice(start, end);
-
-        // Read chunk as ArrayBuffer
-        const arrayBuffer = await readChunkAsArrayBuffer(chunk);
-
-        // Convert to WordArray for CryptoJS
-        const wordArray = arrayBufferToWordArray(arrayBuffer);
-
-        // Update hash with chunk
-        hashAccumulator.update(wordArray);
-
-        bytesProcessed = end;
-
-        // Report progress
-        if (onProgress) {
-            onProgress({
-                bytesProcessed,
+    // Upper-cased because that is how forensic reports print digests and how the Section 63
+    // certificate renders them. The ledger stores exactly what this returns, so the value an
+    // officer committed to and the value a judge recomputes are produced by one code path.
+    const hash = (
+        await sha256OfFile(file, (fraction) => {
+            onProgress?.({
+                bytesProcessed: Math.round(file.size * fraction),
                 totalBytes: file.size,
-                percentComplete: Math.round((bytesProcessed / file.size) * 100)
+                percentComplete: Math.round(fraction * 100),
             });
-        }
-    }
-
-    // Finalize hash
-    const finalHash = hashAccumulator.finalize();
+        })
+    ).toUpperCase();
 
     return {
         algorithm: 'SHA-256',
-        hash: finalHash.toString(CryptoJS.enc.Hex).toUpperCase(),
+        hash,
         fileSize: file.size,
         timestamp: new Date(),
-        isComplete: true
+        isComplete: true,
     };
 };
 
 /**
- * Read a Blob/File chunk as ArrayBuffer
- */
-const readChunkAsArrayBuffer = (chunk: Blob): Promise<ArrayBuffer> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as ArrayBuffer);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsArrayBuffer(chunk);
-    });
-};
-
-/**
- * Convert ArrayBuffer to CryptoJS WordArray
- */
-const arrayBufferToWordArray = (arrayBuffer: ArrayBuffer): CryptoJS.lib.WordArray => {
-    const uint8Array = new Uint8Array(arrayBuffer);
-    const words: number[] = [];
-
-    for (let i = 0; i < uint8Array.length; i += 4) {
-        words.push(
-            (uint8Array[i] << 24) |
-            (uint8Array[i + 1] << 16) |
-            (uint8Array[i + 2] << 8) |
-            uint8Array[i + 3]
-        );
-    }
-
-    return CryptoJS.lib.WordArray.create(words, uint8Array.length);
-};
-
-/**
- * Verify a file's hash against a known hash value
- * Used for Section 63 Part B verification
- * 
- * @param file - The file to verify
- * @param knownHash - The hash to compare against
- * @returns Promise<boolean>
+ * Verify a file's hash against a known digest - the Section 63 Part B comparison.
+ *
+ * Case- and whitespace-insensitive on purpose: digests are copied out of PDF lab reports, where
+ * they wrap across lines, and a verification that fails on a space is a verification that gets
+ * worked around by people under time pressure.
  */
 export const verifyFileHash = async (
     file: File,
@@ -130,52 +83,41 @@ export const verifyFileHash = async (
     return {
         isMatch: normalizedKnown === normalizedComputed,
         computedHash: normalizedComputed,
-        knownHash: normalizedKnown
+        knownHash: normalizedKnown,
     };
 };
 
 /**
- * Extract EXIF/metadata from image files
- * For auto-populating device information in Section 63 certificate
+ * File-system metadata for the certificate's device description.
+ *
+ * This is NOT EXIF parsing. It reports name, size, MIME type and the OS modification time, and
+ * nothing else: reading make/model/GPS from a JPEG means parsing its APP1 segment, and that does
+ * not exist in this codebase. Before a s.63(2)(a) certificate can name "the device used", either
+ * that parser gets written or the officer types the description - pretending otherwise puts an
+ * 'Unknown' placeholder in front of a judge.
  */
 export const extractFileMetadata = async (file: File): Promise<{
-    make?: string;
-    model?: string;
-    captureDate?: Date;
-    gps?: { latitude: number; longitude: number };
-}> => {
-    // For image files, attempt EXIF extraction
-    if (file.type.startsWith('image/')) {
-        try {
-            // Basic metadata from file
-            return {
-                make: 'Unknown', // EXIF extraction would go here
-                model: 'Unknown',
-                captureDate: new Date(file.lastModified)
-            };
-        } catch {
-            return { captureDate: new Date(file.lastModified) };
-        }
-    }
-
-    // For other files, return basic info
-    return {
-        captureDate: new Date(file.lastModified)
-    };
-};
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    captureDate: Date;
+}> => ({
+    fileName: file.name,
+    fileSize: file.size,
+    mimeType: file.type || 'application/octet-stream',
+    captureDate: new Date(file.lastModified),
+});
 
 /**
- * Generate a formatted hash for display in certificates
- * Breaks into 8-character groups for readability
+ * Break a digest into 8-character groups so a person can read it aloud or compare two of them
+ * without a hex editor. Display only - nothing hashes or verifies against this form.
  */
 export const formatHashForDisplay = (hash: string): string => {
     const groups = hash.match(/.{1,8}/g) || [];
     return groups.join(' ');
 };
 
-/**
- * Create a hash verification report for audit trail
- */
+/** Audit-trail record of one comparison, for whoever asks how the exhibit was checked. */
 export const createVerificationReport = (
     originalHash: string,
     verificationHash: string,
@@ -188,16 +130,21 @@ export const createVerificationReport = (
     isMatch: boolean;
     verifierId: string;
     verificationTimestamp: Date;
-    status: 'VERIFIED' | 'MISMATCH' | 'ERROR';
+    status: 'VERIFIED' | 'MISMATCH';
 } => {
     return {
-        reportId: `VR-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        // Random component included because two officers can verify the same exhibit in the same
+        // millisecond; a timestamp-only id would collide and then overwrite an audit entry.
+        reportId: `VR-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
         originalHash,
         verificationHash,
         isMatch,
         verifierId,
         verificationTimestamp: new Date(),
-        status: isMatch ? 'VERIFIED' : 'MISMATCH'
+        // 'ERROR' was in the union but no path could produce it: a failed read threw out of
+        // computeFileHash and the caller's catch decided what the user saw. Two states that match
+        // what this function can actually conclude.
+        status: isMatch ? 'VERIFIED' : 'MISMATCH',
     };
 };
 
@@ -206,5 +153,5 @@ export default {
     verifyFileHash,
     extractFileMetadata,
     formatHashForDisplay,
-    createVerificationReport
+    createVerificationReport,
 };

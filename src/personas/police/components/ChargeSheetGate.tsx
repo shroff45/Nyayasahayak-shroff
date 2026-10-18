@@ -4,20 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-    Shield,
-    ShieldCheck,
-    ShieldX,
-    Lock,
-    Unlock,
-    Video,
-    UserCheck,
-    CheckCircle2,
-    AlertTriangle,
-    XCircle,
-    FileText,
-    Send,
-    Clock
-} from 'lucide-react';
+    Shield, ShieldCheck, Lock, Unlock, Video, UserCheck, CheckCircle2, AlertTriangle, FileText, Send, Clock } from 'lucide-react';
 import {
     validateForensicCompliance,
     canSubmitChargeSheet,

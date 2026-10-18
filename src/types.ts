@@ -60,6 +60,11 @@ export interface VerificationResult {
     currentHash: string;
     tampered: boolean;
     timestamp: string;
+    /** Added with the real trust layer; every field below is optional so older screens keep working. */
+    anchored?: boolean;
+    anchorIndex?: number;
+    signerFingerprint?: string;
+    verificationReason?: string;
 }
 
 export interface SmartBailContract {
@@ -73,6 +78,14 @@ export interface SmartBailContract {
     verifiedAppearances: string[];
     complianceScore: number;
     refundEligible: boolean;
+    /**
+     * The three fields below existed only in the duplicate model under `features/nationals`,
+     * which is why two screens could not agree on what a contract is. They are now part of the
+     * single shape the ledger writes, so no cast is needed at either boundary.
+     */
+    creationDate: string;
+    releaseConditions: { courtDates: string[]; jurisdiction: string };
+    biometricHash: string;
 }
 
 export interface GraphNode {

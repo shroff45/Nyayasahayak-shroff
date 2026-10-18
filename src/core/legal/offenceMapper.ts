@@ -3,7 +3,7 @@
 // Section 4 of Master Implementation Guide
 // Handles IPC ↔ BNS switching based on incident date (Article 20 protection)
 
-import type { OffenceType } from '@types/pilot';
+import type { OffenceType } from '../../types/pilot';
 
 // BNS Implementation Date: July 1, 2024
 export const BNS_CUTOFF_DATE = new Date('2024-07-01');

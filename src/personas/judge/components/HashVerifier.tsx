@@ -4,18 +4,8 @@
 
 import React, { useState, useCallback } from 'react';
 import {
-    Shield,
-    ShieldCheck,
-    ShieldX,
-    Upload,
-    Hash,
-    CheckCircle2,
-    XCircle,
-    Loader2,
-    FileText,
-    AlertTriangle
-} from 'lucide-react';
-import { computeFileHash, verifyFileHash } from '../../../core/services/evidenceHasher';
+    Shield, ShieldCheck, ShieldX, Upload, Hash, CheckCircle2, Loader2, FileText, AlertTriangle } from 'lucide-react';
+import { verifyFileHash } from '../../../core/services/evidenceHasher';
 
 interface HashVerifierProps {
     evidenceId?: string;
@@ -41,17 +31,29 @@ const HashVerifier: React.FC<HashVerifierProps> = ({
     const [isVerifying, setIsVerifying] = useState(false);
     const [result, setResult] = useState<VerificationResult | null>(null);
     const [expectedHash, setExpectedHash] = useState(initialExpectedHash || '');
-    const [manualHashInput, setManualHashInput] = useState(false);
+    const [hashError, setHashError] = useState<string | null>(null);
+
+    const normalizeHash = (value: string) => value.trim().toLowerCase();
 
     const handleVerify = useCallback(async (file: File) => {
-        if (!expectedHash) {
-            setManualHashInput(true);
+        const expected = normalizeHash(expectedHash);
+        // Without an expected digest there is nothing to compare against, so say so instead
+        // of dropping the file silently.
+        if (!expected) {
+            setHashError(
+                'Enter the expected SHA-256 digest from the Section 63 certificate (or the seizure memo) before verifying a file.'
+            );
             return;
         }
+        if (!/^[0-9a-f]{64}$/.test(expected)) {
+            setHashError('Expected digest must be a 64-character SHA-256 hex string.');
+            return;
+        }
+        setHashError(null);
 
         setIsVerifying(true);
         try {
-            const verification = await verifyFileHash(file, expectedHash);
+            const verification = await verifyFileHash(file, expected);
 
             setResult({
                 isMatch: verification.isMatch,
@@ -62,7 +64,11 @@ const HashVerifier: React.FC<HashVerifierProps> = ({
                 fileSize: file.size
             });
         } catch (error) {
-            console.error('Verification failed:', error);
+            // Surfaced to the judge: a read failure must not look like a clean pass.
+            setHashError(
+                `Verification could not be completed: ${error instanceof Error ? error.message : 'unreadable file'}.`
+            );
+            setResult(null);
         } finally {
             setIsVerifying(false);
         }
@@ -128,8 +134,20 @@ const HashVerifier: React.FC<HashVerifierProps> = ({
                         value={expectedHash}
                         onChange={(e) => setExpectedHash(e.target.value)}
                         placeholder="Enter SHA-256 hash from certificate..."
-                        className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono text-sm"
+                        className={`w-full bg-slate-900/50 border rounded-lg px-4 py-3 text-white font-mono text-sm ${hashError ? 'border-red-500/70' : 'border-slate-600'
+                            }`}
                     />
+                    {hashError && (
+                        <p className="mt-2 flex items-center gap-2 text-xs text-red-400">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            {hashError}
+                        </p>
+                    )}
+                    {evidenceId && (
+                        <p className="mt-2 text-xs text-slate-500">
+                            Verifying evidence item <span className="font-mono text-slate-400">{evidenceId}</span>
+                        </p>
+                    )}
                 </div>
             )}
 

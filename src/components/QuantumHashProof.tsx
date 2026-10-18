@@ -120,9 +120,9 @@ export default function QuantumHashProof({ caseId, onVerificationComplete }: Qua
                 <div className="bg-blue-50 p-3 rounded border border-blue-100 flex items-start gap-3">
                     <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
                     <div>
-                        <p className="text-sm font-bold text-blue-800">{t('post_quantum_cryptography')}</p>
+                        <p className="text-sm font-bold text-blue-800">{t('anchoring_label')}</p>
                         <p className="text-xs text-blue-700">{t('algorithm_label')}</p>
-                        <p className="text-xs text-blue-700">{t('status_quantum_resistant')}</p>
+                        <p className="text-xs text-blue-700">{t('ledger_verification_status')}</p>
                     </div>
                 </div>
 

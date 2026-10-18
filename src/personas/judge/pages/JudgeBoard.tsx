@@ -4,13 +4,8 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-    LayoutDashboard, Clock, AlertTriangle, CheckCircle,
-    Scale, Calendar, Users, FileText, Shield,
-    ChevronRight, Filter, SortAsc, Eye, Gavel,
-    Timer, TrendingUp, AlertCircle, XCircle, Loader2, BookOpen, EyeOff,
-    Keyboard, X
-} from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+    LayoutDashboard, Clock, AlertTriangle, CheckCircle, Scale, Calendar, Users, FileText, Shield, Filter, SortAsc, Eye, Gavel, Timer, AlertCircle, XCircle, Loader2, BookOpen, EyeOff, Keyboard, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../../core/auth/AuthContext';
 import { useToast } from '../../../shared/hooks/useToast';
 import { mockDelay } from '../../../shared/utils/mockApi';
@@ -175,7 +170,6 @@ const MOCK_CASES: BoardCase[] = [
 
 const JudgeBoard: React.FC = () => {
     const { user } = useAuth();
-    const navigate = useNavigate();
     const { showToast, updateToast } = useToast();
     const [selectedCase, setSelectedCase] = useState<BoardCase | null>(null);
     const [filterType, setFilterType] = useState<string>('ALL');
@@ -498,6 +492,26 @@ const JudgeBoard: React.FC = () => {
                                                 </span>
                                             )}
                                         </div>
+
+                                        {/* Statutory breach: show the precedent the judge must apply */}
+                                        {selectedCase?.id === case_.id && (() => {
+                                            const warning = getBNSSPrecedentWarning(
+                                                bnssStatus === 'OK' ? null : bnssStatus
+                                            );
+                                            if (!warning) return null;
+                                            return (
+                                                <div className={`mb-3 rounded-lg border p-3 text-xs ${bnssStatus === 'CRITICAL'
+                                                        ? 'bg-red-500/10 border-red-500/40 text-red-200'
+                                                        : 'bg-amber-500/10 border-amber-500/40 text-amber-200'
+                                                    }`}>
+                                                    <p className="font-bold mb-1">{warning.title}</p>
+                                                    <p className="font-mono text-[11px] opacity-80 whitespace-pre-line mb-1">
+                                                        {warning.citation}
+                                                    </p>
+                                                    <p>{warning.recommendation}</p>
+                                                </div>
+                                            );
+                                        })()}
 
                                         {/* Case Title (Redacted in Blind Mode) */}
                                         <h3 className="font-bold text-white mb-1">

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Case } from '../../../core/types';
-import { FileSignature, Shield, AlertCircle, CheckCircle, Gavel, Flame, Sparkles } from 'lucide-react';
+import { FileSignature, Shield, CheckCircle, Flame, Sparkles } from 'lucide-react';
 
 interface DraftJudgmentPanelProps {
     caseData: Case;
@@ -133,6 +133,13 @@ District Judge`;
                     >
                         {vipakshMode ? <Flame size={16} className="animate-bounce" /> : <Shield size={16} />}
                         {vipakshMode ? 'Audit Active' : 'Run Vipaksh Audit'}
+                    </button>
+
+                    <button
+                        onClick={() => onCreateBail(50000)}
+                        className="px-4 py-2 rounded-lg text-sm font-bold bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-all"
+                    >
+                        Grant Bail (₹50,000 surety)
                     </button>
 
                     <div className="h-8 w-px bg-slate-200 mx-1"></div>
