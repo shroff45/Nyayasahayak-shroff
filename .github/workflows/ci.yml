@@ -31,6 +31,14 @@ jobs:
       - name: Behavioural tests
         run: npm test
 
+      # The ledger's own claims, tested against the shipped module: tampering by a writer,
+      # persistence across a reload, offline certificate verification, and the absence of
+      # post-quantum / zero-knowledge labels in the code. It exits non-zero when a claim fails,
+      # which is why it is allowed in this file at all - an earlier draft of this step pointed at
+      # a harness that printed FAIL and still returned 0.
+      - name: Ledger claims must hold
+        run: node tools/ledger_repro.cjs
+
       - name: Production build
         run: set -o pipefail && npm run build | tee /tmp/build.log
 

@@ -1,155 +1,446 @@
 /**
- * ledger_repro.cjs — empirical audit of the "Akhand Ledger" (src/services/akhandLedger.ts)
+ * ledger_repro.cjs — does the "Akhand Ledger" do what the app claims of it?
  *
- * This is NOT part of the app. It faithfully re-implements the module's logic so the
- * security/verification claims can be tested in isolation, without React or a browser.
+ *   node tools/ledger_repro.cjs        # exit 0 = every claim holds; exit 1 = at least one does not
  *
- *   node tools/ledger_repro.cjs
+ * History: this file used to *re-implement* the ledger's logic locally (against `crypto-js`)
+ * because the real module could not run outside a browser. That made it a report about source
+ * code rather than a test. It now bundles the real `src/services/akhandLedger.ts` with the
+ * esbuild already in node_modules, installs a localStorage shim, and exercises the shipped
+ * module - the same code path the Evidence Locker and the judge's verifier call.
  *
- * Findings are printed as PASS/FAIL against the claims made in README.md and in the UI copy.
+ * Twelve checks, in the same five groups the audit raised:
+ *   A zero-knowledge / tamper detection     B persistence, attribution, offline verification
+ *   C "post-quantum"                        D the merkleRoot field
+ *   E how many ledger copies exist and whether they agree
+ *
+ * Exit status is the point. A harness that prints FAIL and still returns 0 is how a repo ships
+ * a "100% verified" badge for years.
  */
 const path = require('path');
-const { SHA256 } = require(path.join(__dirname, '..', 'node_modules', 'crypto-js'));
+const fs = require('fs');
+const os = require('os');
+const { execFileSync, execSync } = require('child_process');
+const { createHash } = require('crypto');
+
+const repoRoot = path.resolve(__dirname, '..');
 
 // ---------------------------------------------------------------------------
-// Port of src/services/akhandLedger.ts  (lines 10-11, 19-27, 46-63, 66-84, 96-112)
+// Environment. WebCrypto is native in node 20+; localStorage is not, so shim it. The
+// harness deliberately does not know the storage key names: it finds the journal by shape,
+// so a rename in store.ts cannot turn a tamper test into a silent no-op.
 // ---------------------------------------------------------------------------
-let blockchain = [];
-const KYBER_SALT = 'KYBER-1024-ENCAPSULATED-SALT';
-
-function calculateHash(block) {
-    const blockData = `${block.index}${block.timestamp}${JSON.stringify(block.data)}${block.previousHash}${block.nonce}`;
-    const standardHash = SHA256(blockData).toString();
-    const pqcHash = SHA256(standardHash + KYBER_SALT).toString();
-    return `PQC-v1:KYBER-1024:${pqcHash}`;
+class ShimStorage {
+    constructor() { this.map = new Map(); }
+    getItem(k) { return this.map.has(k) ? this.map.get(k) : null; }
+    setItem(k, v) { this.map.set(k, String(v)); }
+    removeItem(k) { this.map.delete(k); }
+    key(i) { return [...this.map.keys()][i] ?? null; }
+    get length() { return this.map.size; }
 }
-function initializeBlockchain() {
-    if (blockchain.length === 0) {
-        const genesis = { index: 0, timestamp: new Date().toISOString(), data: { message: 'Nyaya-Srotra Genesis - PQC Protected' }, previousHash: '0', hash: '', merkleRoot: '0', nonce: 0 };
-        genesis.hash = calculateHash(genesis);
-        blockchain.push(genesis);
+const storageShim = new ShimStorage();
+globalThis.localStorage = storageShim;
+
+const journalKeys = () => {
+    let recordsKey = null;
+    let metaKey = null;
+    for (const key of storageShim.map.keys()) {
+        const raw = storageShim.getItem(key);
+        if (!raw || raw[0] !== '[') continue;
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch { continue; }
+        if (Array.isArray(parsed) && parsed[0] && 'leafDigest' in parsed[0]) { recordsKey = key; metaKey = key.replace(/:records$/, ':meta'); }
     }
-}
-function addBlock(caseData) {
-    const previousBlock = blockchain[blockchain.length - 1];
-    const newBlock = { index: previousBlock.index + 1, timestamp: new Date().toISOString(), data: caseData, previousHash: previousBlock.hash, hash: '', merkleRoot: SHA256(JSON.stringify(caseData)).toString(), nonce: 0 };
-    newBlock.hash = calculateHash(newBlock);
-    blockchain.push(newBlock);
-    return { success: true, blockHash: newBlock.hash, transactionId: `TXN-${newBlock.index}-${Date.now()}` };
-}
-function verifyChainIntegrity() {
-    const corruptedBlocks = [];
-    for (let i = 1; i < blockchain.length; i++) {
-        const currentBlock = blockchain[i], previousBlock = blockchain[i - 1];
-        if (currentBlock.hash !== calculateHash(currentBlock)) corruptedBlocks.push(currentBlock.index);
-        if (currentBlock.previousHash !== previousBlock.hash) corruptedBlocks.push(currentBlock.index);
+    return { recordsKey, metaKey };
+};
+const readJournal = () => {
+    const { recordsKey, metaKey } = journalKeys();
+    if (!recordsKey) throw new Error('no ledger journal found in storage - the write never persisted');
+    return { recordsKey, metaKey, records: JSON.parse(storageShim.getItem(recordsKey)) };
+};
+const wipeJournal = () => {
+    const { recordsKey, metaKey } = journalKeys();
+    if (recordsKey) storageShim.removeItem(recordsKey);
+    if (metaKey) storageShim.removeItem(metaKey);
+};
+
+const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nyaya-ledger-repro-'));
+const esbuildBin = path.join(repoRoot, 'node_modules', '.bin', 'esbuild');
+
+const bundle = (source, outName) => {
+    const outfile = path.join(bundleDir, outName);
+    try {
+        execFileSync(esbuildBin, [source, '--bundle', '--format=esm', '--platform=node', '--external:react', `--outfile=${outfile}`],
+            { cwd: repoRoot, stdio: 'pipe' });
+    } catch (err) {
+        console.error(`esbuild could not bundle ${source}:\n${err.stderr?.toString() ?? err.message}`);
+        process.exit(2);
     }
-    return { isValid: corruptedBlocks.length === 0, totalBlocks: blockchain.length, corruptedBlocks };
-}
-function verifyCase(caseId) {
-    const block = blockchain.find(b => b.data && b.data.id === caseId);
-    if (!block) throw new Error('Case not found in blockchain');
-    const currentHash = calculateHash(block);
-    return { isAuthentic: currentHash === block.hash, tampered: currentHash !== block.hash, originalHash: block.hash, currentHash };
-}
-// Port of src/core/services/evidenceHasher.ts -> verifyFileHash
-const verifyFileHash = (digest, knownHash) => ({ isMatch: knownHash.toUpperCase().replace(/\s/g, '') === digest.toUpperCase() });
-// Port of the judge-side lookup in src/personas/judge/pages/HashVerifier.tsx (lines ~46-60)
-const judgeLooksUp = (computedHash) => blockchain.find(block => { try { return JSON.parse(block.data?.caseNotes || '{}').hash === computedHash; } catch { return false; } });
+    return outfile;
+};
 
-// ---------------------------------------------------------------------------
-let pass = 0, fail = 0;
-const check = (claim, ok, detail) => { console.log(`  [${ok ? 'CLAIM HOLDS' : 'CLAIM FAILS'}] ${claim}\n             ${detail}`); ok ? pass++ : fail++; };
+const facadePath = bundle('src/services/akhandLedger.ts', 'ledger-facade.mjs');
+const trustPath = bundle('src/core/trust/index.ts', 'trust-core.mjs');
 
-console.log('\n=== A. "Zero-Knowledge Proof to detect tampering vs. Ledger" (README, Hash Verifier) ===');
-initializeBlockchain();
-const fileADigest = SHA256('scene-video-raw.mp4 bytes').toString().toUpperCase();
-addBlock({ id: 'EV-1', cnrNumber: 'EVIDENCE/2026/1', caseType: 'EVIDENCE', summary: 'Evidence: scene-video.mp4', caseNotes: JSON.stringify({ fileName: 'scene-video.mp4', hash: fileADigest }), status: 'FILED', sectionsInvoked: ['BSA-63'] });
-check('The verifier learns nothing about the underlying exhibit (the zero-knowledge property)',
-    (() => { const b = blockchain.find(x => x.data.id === 'EV-1'); const reveals = /scene-video\.mp4/.test(b.data.summary) && JSON.parse(b.data.caseNotes).fileName === 'scene-video.mp4'; return !reveals; })(),
-    'FAILS because block.data carries the filename and the entire case payload in cleartext, and the "proof" is `parsedNotes.hash === computedHash` — a string equality test. No commitment, no challenge/response, no prover-verifier transcript, no soundness/completeness argument => this is not a zero-knowledge proof in any sense of the term.');
-check('Naive in-band tampering of a stored block is caught',
-    (() => { const t = blockchain.find(x => x.data.id === 'EV-1'); const orig = t.data; t.data = { ...orig, caseNotes: JSON.stringify({ fileName: 'scene-video.mp4', hash: 'DEADBEEF'.repeat(8) }) }; const detected = !verifyChainIntegrity().isValid; t.data = orig; return detected; })(),
-    'HOLDS: verifyChainIntegrity() recomputes from the live object, so a reader who only mutates block.data is caught. Credit where due — the chained-hash mechanics are textbook-correct. The next two checks show why that is not the same as tamper-evidence.');
-check('Integrity verification resists an attacker who can also write to the store',
-    (() => { const t = blockchain.find(x => x.data.id === 'EV-1'); const orig = t.data; t.data = { ...orig, caseNotes: JSON.stringify({ fileName: 'scene-video.mp4', hash: 'DEADBEEF'.repeat(8) }) }; t.hash = calculateHash(t); t.merkleRoot = SHA256(JSON.stringify(t.data)).toString(); const laundered = verifyChainIntegrity().isValid && !!judgeLooksUp('DEADBEEF'.repeat(8)); t.data = orig; t.hash = calculateHash(t); t.merkleRoot = SHA256(JSON.stringify(t.data)).toString(); return !laundered; })(),
-    'FAILS: with no external validator, anyone who can mutate the store just re-hashes the block. verifyChainIntegrity() then reports the chain VALID while the exhibit digest has been swapped, and the judge-side lookup matches the forged digest => "tamper-evident" holds only against readers who cannot write.');
+/**
+ * A "page refresh" is a second import of the same file with a cache-busting query: fresh module
+ * state, same storage. That is exactly the scenario the audit said the old code could not survive.
+ */
+const freshImport = (file) => import(`file://${file}?v=${Math.random()}`);
 
-console.log('\n=== B. "Trust Triangle": Ingest -> Anchor -> Verify (README) ===');
-check('Anchored hashes survive for a judge who opens the verifier later',
-    (() => { const persisted = require('fs').readFileSync(path.join(__dirname, '..', 'src', 'services', 'akhandLedger.ts'), 'utf8'); return /localStorage|sessionStorage|indexedDB|fetch\(|axios/.test(persisted); })(),
-    'src/services/akhandLedger.ts contains no storage or network call: the chain is a module-scoped array. On page refresh it re-seeds to genesis, so judgeLooksUp(realDigest) returns undefined and the UI shows "NO_MATCH" for a perfectly intact exhibit.');
-check('The ledger authenticates WHO anchored an exhibit (non-repudiation)',
-    (() => { const src = require('fs').readFileSync(path.join(__dirname, '..', 'src', 'services', 'akhandLedger.ts'), 'utf8'); return /sign|signature|publicKey|privateKey|certificate|hmac/i.test(src); })(),
-    'addBlock() accepts any object from any caller with no signature, no key, no role check. The same Evidence Locker UI that a legitimate SI uses will happily anchor a digest computed over a doctored file => substitution is laundered, not detected. (OriginStamp and Microsoft US11139954B2 both require signed hashes / custody metadata for exactly this reason.)');
-check('A judge can verify an anchor without trusting this application',
-    false,
-    'Verification requires reading this app\'s in-memory array. There is no block height, no txid, no inclusion proof, no public network — so nothing is independently checkable, which is the only reason to anchor to a ledger at all.');
+let pass = 0;
+let fail = 0;
+const check = (claim, ok, detail) => {
+    console.log(`  [${ok ? 'CLAIM HOLDS' : 'CLAIM FAILS'}] ${claim}`);
+    console.log(`             ${detail}`);
+    ok ? pass++ : fail++;
+};
 
-console.log('\n=== C. "Post-Quantum Cryptography using CRYSTALS-Kyber" (README / UI badge) ===');
-check('The output embeds a Kyber/ML-KEM ciphertext or a KEM shared secret',
-    (() => { const h = blockchain[1].hash; const b64 = h.split(':').pop(); return b64.length >= 1500; })(),
-    `The label is "PQC-v1:KYBER-1024:" + ${blockchain[1].hash.split(':').pop().length} hex chars. ML-KEM-768 encapsulation keys are 1,184 B and ciphertexts 1,088 B. SHA-256 output length is 32 B => no KEM material is present anywhere.`);
-check('The construction adds security over plain SHA-256',
-    false,
-    'calculateHash() = SHA256( SHA256(data) || "KYBER-1024-ENCAPSULATED-SALT" ). The salt is a compile-time constant visible in the source, so it is neither a key nor a secret: it adds 0 bits. It also length-extends the digest, weakening preimage resistance against the 256-bit budget.');
-check('Quantum resistance would require SHA-384/512 (Grover halves security)',
-    false,
-    'Against a quantum adversary, SHA-256 gives ~128-bit preimage resistance. The accepted mitigation is to widen the digest (SHA-384/SHA-512) or use hash-based signatures (SPHINCS+/LMS) — not to append a salt. Neither is implemented.');
+const sha256hex = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const utf8 = (s) => new TextEncoder().encode(s);
+const isHex64 = (s) => typeof s === 'string' && /^[0-9a-f]{64}$/.test(s);
 
-console.log('\n=== D. "merkleRoot" field on every block ===');
-check('merkleRoot is a Merkle root over multiple leaves', (() => {
-    const leaves = [{ a: 1 }, { b: 2 }, { c: 3 }, { d: 4 }];
-    let level = leaves.map(l => SHA256(JSON.stringify(l)).toString());      // leaf digests
-    while (level.length > 1) {
-        const next = [];
-        for (let i = 0; i < level.length; i += 2) {
-            const L = level[i], R = level[i + 1] ?? level[i];
-            next.push(SHA256(L + R).toString());
+const exhibitDigest = sha256hex(utf8('scene-video-raw.mp4 bytes')).toUpperCase();
+const caseId = 'EV-REPRO-1';
+
+const exhibitPayload = () => ({
+    id: caseId,
+    cnrNumber: 'EVIDENCE/2026/1',
+    complainant: 'SI KUMAR',
+    respondent: 'ACCUSED',
+    caseType: 'EVIDENCE',
+    summary: 'Evidence: scene-video.mp4',
+    caseNotes: JSON.stringify({ fileName: 'scene-video.mp4', hash: exhibitDigest }),
+    filingDate: new Date().toISOString(),
+    incidentDate: new Date().toISOString(),
+    isZeroFir: false,
+    applicableLaw: 'BNS',
+    status: 'FILED',
+    urgency: 'HIGH',
+    sectionsInvoked: ['BSA-63'],
+    adjournmentsCount: 0,
+});
+
+/** Strips comments so an honest "this is NOT a zero-knowledge proof" note cannot read as the claim. */
+const codeOnly = (file) =>
+    fs.readFileSync(path.join(repoRoot, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+const main = async () => {
+    console.log('\n=== A. "Zero-Knowledge Proof to detect tampering vs. Ledger" (README, Hash Verifier) ===');
+
+    if (!globalThis.crypto?.subtle) {
+        console.error('This harness needs WebCrypto (node 20+).');
+        process.exit(2);
+    }
+
+    let ledger = await freshImport(facadePath);
+    const core = await freshImport(trustPath);
+    await ledger.initializeBlockchain();
+    const written = await ledger.addBlock(exhibitPayload());
+
+    check(
+        'No zero-knowledge claim survives in the ledger code path',
+        (() => {
+            const files = ['src/services/akhandLedger.ts', 'src/core/trust/sha256.ts', 'src/core/trust/merkle.ts', 'src/core/trust/ledger.ts', 'src/core/trust/keys.ts'];
+            return !/zero.?knowledge|zkp|zk-?snark/i.test(files.map(codeOnly).join('\n'));
+        })(),
+        'The audit found `verifyCase` billed as a zero-knowledge proof while doing a string equality test. Verification is now recomputed SHA-256 plus a signed Merkle inclusion proof, which reveals the payload by design; the label is gone from the code, and docs/TRUST_MODEL.md says why.'
+    );
+
+    const naive = await (async () => {
+        const { recordsKey, records } = readJournal();
+        const target = records.find((r) => r.data?.id === caseId);
+        if (!target) return { detected: false, why: 'the exhibit is not in storage at all' };
+        const forgedNotes = JSON.stringify({ fileName: 'scene-video.mp4', hash: 'DEADBEEF'.repeat(8) });
+        storageShim.setItem(recordsKey, JSON.stringify(records.map((r) => (r === target ? { ...r, data: { ...r.data, caseNotes: forgedNotes } } : r))));
+        const reloaded = await freshImport(facadePath);
+        await reloaded.initializeBlockchain();
+        const chain = await reloaded.verifyChainIntegrity();
+        wipeJournal();
+        ledger = await freshImport(facadePath);
+        await ledger.initializeBlockchain();
+        await ledger.addBlock(exhibitPayload());
+        return { detected: !chain.isValid, why: chain.summary };
+    })();
+    check(
+        'Naive in-band tampering of a stored record is caught',
+        naive.detected,
+        `Editing the exhibit's payload inside localStorage and reopening the ledger reports: ${naive.why}. Against the old in-memory array this could not even be tested across a reload.`
+    );
+
+    const launder = await (async () => {
+        const { recordsKey, metaKey, records } = readJournal();
+        const forgedDigest = 'f'.repeat(64);
+        const edited = [];
+        for (let i = 0; i < records.length; i++) {
+            const r = records[i];
+            if (r.data?.id === caseId) {
+                r.data = { ...r.data, caseNotes: JSON.stringify({ fileName: 'scene-video.mp4', hash: forgedDigest }) };
+            }
+            r.leafDigest = await core.leafDigestFor(r);
+            r.previousDigest = i === 0 ? '0'.repeat(64) : records[i - 1].leafDigest;
+            edited.push(r);
         }
-        level = next;
-    }
-    const trueRoot = level[0];
-    const repoRoot = SHA256(JSON.stringify(leaves)).toString();              // what addBlock() stores
-    return trueRoot === repoRoot;
-})(),
-    'The code stores SHA256(JSON.stringify(payload)) — a hash of the whole payload, single leaf. In the features/nationals copy it is literally `merkleRoot: "" // Optional implementation`. Consequence: no inclusion proof can ever be produced, so a "verify against ledger" UI cannot exist in the standard sense.');
+        let head = '0'.repeat(64);
+        for (const r of edited) head = sha256hex(utf8(`${head}|${r.leafDigest}`));
+        storageShim.setItem(recordsKey, JSON.stringify(edited));
+        const meta = JSON.parse(storageShim.getItem(metaKey));
+        storageShim.setItem(metaKey, JSON.stringify({ ...meta, headDigest: head }));
 
-console.log('\n=== E. Consistency of the ledger copies that survive in the tree ===');
-const { execSync: _exec } = require('child_process');
-const ledgerFiles = _exec(`cd "${path.join(__dirname, '..')}" && find src -name 'akhandLedger.ts'`)
-    .toString().trim().split('\n').filter(Boolean);
+        const reloaded = await freshImport(facadePath);
+        await reloaded.initializeBlockchain();
+        const chain = await reloaded.verifyChainIntegrity();
+        const verdict = await (await reloaded.getLedger()).verifyRecord(written.index);
+        const forgedDigestFindable = (await reloaded.getBlockchain()).some((b) => {
+            try { return JSON.parse(b.data?.caseNotes || '{}').hash === forgedDigest; } catch { return false; }
+        });
 
-check('Every ledger copy produces interoperable block hashes',
-    (() => {
-        const templates = new Set();
-        for (const f of ledgerFiles) {
-            const src = require('fs').readFileSync(path.join(__dirname, '..', f), 'utf8');
-            for (const m of src.matchAll(/`(PQC-v1:[^`]*?)\$\{pqcHash\}`/g)) templates.add(m[1]);
-        }
-        return templates.size <= 1;   // interoperable only if one shared format
-    })(),
-    `FAILS: ${ledgerFiles.length} ledger copies are present and more than one hash format is in use. A block anchored by one module can never be matched by a verifier reading the other, and each module holds its own in-memory array - a genuine split-brain for the SmartBail / nationals Voice-Filing path. (Before the "green build" pass there were three copies, including an unreachable src/core/services/trust one; it has since been deleted, so this check is now the real test of whether the remaining two agree.)`);
+        wipeJournal();
+        ledger = await freshImport(facadePath);
+        await ledger.initializeBlockchain();
+        await ledger.addBlock(exhibitPayload());
 
-check('Every ledger copy is actually reachable from the app',
-    (() => {
-        // Importers are matched on the module basename because the app imports it with a
-        // relative specifier ("./services/akhandLedger"), which no directory-scoped grep finds.
-        const lines = _exec(`cd "${path.join(__dirname, '..')}" && grep -rn "akhandLedger'" src --include=*.ts --include=*.tsx || true`)
-            .toString().trim().split('\n').filter(Boolean);
-        const importersOf = (file) => {
-            const self = file + ':';
-            return lines.filter(l => !l.startsWith(self) && l.includes("from '"));
+        return {
+            blocked: !chain.isValid && !verdict.ok && /Merkle root|anchor|signature/i.test(verdict.reason),
+            detail: `chain valid=${chain.isValid}; record verdict: "${verdict.reason}"; judge-side digest lookup still matches the forged value=${forgedDigestFindable}`,
         };
-        const dead = ledgerFiles.filter(f => importersOf(f).length === 0);
-        if (dead.length) console.log('   unreachable:', dead.join(', '));
-        return dead.length === 0;
-    })(),
-    'A ledger module nobody imports is worse than no ledger module: it keeps the security claims in the tree for a reviewer or auditor to find, while the running app writes to a different store.');
+    })();
+    check(
+        'Integrity survives an attacker who can also write to the store (the audit\'s central finding)',
+        launder.blocked,
+        `The adversary swapped the exhibit digest AND recomputed every leaf, every link and the head fold - the laundering that used to succeed. Now: ${launder.detail}. The Merkle root inside a signature over a key the store does not contain is what they cannot reproduce.`
+    );
 
-console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not ===\n`);
-console.log('Verdict: the ledger is a legitimate teaching demo of chained hashing.');
-console.log('It is not a blockchain (no peers/consensus/persistence), not a ZKP, not');
-console.log('post-quantum, and it provides no non-repudiation. Do not put these claims');
-console.log('in front of a court, a client, or a patent examiner without changing the');
-console.log('code first.\n');
+    console.log('\n=== B. "Trust Triangle": Ingest -> Anchor -> Verify (README) ===');
+
+    const survivesReload = await (async () => {
+        const reloaded = await freshImport(facadePath);
+        await reloaded.initializeBlockchain();
+        const chain = await reloaded.getBlockchain();
+        const found = chain.find((b) => {
+            try { return JSON.parse(b.data?.caseNotes || '{}').hash === exhibitDigest; } catch { return false; }
+        });
+        return { ok: Boolean(found), count: chain.length };
+    })();
+    check(
+        'Anchored hashes survive for a judge who opens the verifier later',
+        survivesReload.ok,
+        `A second import of the module - fresh memory, same storage - still finds the exhibit among ${survivesReload.count} record(s). The failing case the audit recorded was a refresh re-seeding to genesis, so the judge's screen answered "NO MATCH" to a perfectly intact file.`
+    );
+
+    const attribution = await (async () => {
+        const instance = await ledger.getLedger();
+        const anchors = await instance.anchors();
+        const anchor = anchors[anchors.length - 1];
+        const status = await ledger.getLedgerStatus();
+        const signedByUs = Boolean(anchor?.signature) && anchor.signerFingerprint === status.signerFingerprint;
+        const before = await instance.verifyRecord(written.index);
+        const pins = JSON.parse(storageShim.getItem('nyaya:authorities:v1') ?? '[]');
+        storageShim.setItem('nyaya:authorities:v1', JSON.stringify(pins.filter((p) => p.fingerprint !== anchor.signerFingerprint)));
+        const untrusted = await freshImport(facadePath);
+        await untrusted.initializeBlockchain();
+        const after = await (await untrusted.getLedger()).verifyRecord(written.index);
+        storageShim.setItem('nyaya:authorities:v1', JSON.stringify(pins));
+        return {
+            ok: signedByUs && before.ok && !after.ok && /trust|pin/i.test(after.reason),
+            detail: `anchor #${anchor.anchorIndex} signed by ${anchor.signerFingerprint} (custody: ${anchor.custody}); pinned => "${before.reason}" | key unpinned => "${after.reason}"`,
+        };
+    })();
+    check(
+        'The ledger records WHO anchored an exhibit, and trust stays a separate decision',
+        attribution.ok,
+        `${attribution.detail}. Removing the pin must break verification while the signature itself still checks out - otherwise "signed" would mean nothing. Self-pinned device keys are the weakest honest form: they prove the record has not changed since this browser wrote it, not that a named officer wrote it.`
+    );
+
+    const offline = await (async () => {
+        const certJson = await ledger.exportCertificate(written.index);
+        const parsed = JSON.parse(certJson);
+        const verified = await ledger.verifyCertificate(certJson);
+        const forged = { ...parsed, record: { ...parsed.record, data: { ...parsed.record.data, summary: 'Evidence: nothing.mp4' } } };
+        const rejected = await ledger.verifyCertificate(JSON.stringify(forged));
+        return {
+            ok: verified.ok && !rejected.ok && isHex64(parsed.anchor?.merkleRoot ?? ''),
+            detail: `clean certificate: "${verified.reason}"; one payload field edited: "${rejected.reason}"`,
+        };
+    })();
+    check(
+        'A judge can verify an anchor without trusting this application',
+        offline.ok,
+        'exportCertificate() emits {record, proof, anchor, signature}; verifyCertificate() needs no app state, only a pinned key, so the check runs on another machine, offline. ' + offline.detail
+    );
+
+    console.log('\n=== C. "Post-Quantum Cryptography using CRYSTALS-Kyber" (README / UI badge) ===');
+
+    const labels = await (async () => {
+        const found = execSync(
+            `grep -rliE 'kyber|PQC-v1|ENCAPSULATED|post-quantum|quantum-resistant|quantum (proof|verify|search|signature)' src --include=*.ts --include=*.tsx || true`,
+            { cwd: repoRoot }
+        ).toString().trim().split('\n').filter(Boolean);
+        // Comments are excluded on purpose: the modules explain what the code used to claim, and a
+        // historical note must not be counted as the claim. A live label is in code or JSX text.
+        const pattern = /kyber|PQC-v1|ENCAPSULATED|post-quantum|quantum-resistant|quantum\s+(proof|verify|search|signature|protected)/i;
+        const claiming = found.filter((f) => pattern.test(codeOnly(f)));
+        return { ok: claiming.length === 0, lines: claiming };
+    })();
+    check(
+        'Nothing in the tree calls itself post-quantum or embeds KEM material',
+        labels.ok,
+        labels.ok
+            ? 'No Kyber / PQC-v1 / post-quantum / quantum-resistant / "Quantum Proof"-style string survives in shipped code or UI text under src/ (localisation values included, comments excluded). A digest is 32 bytes of SHA-256; an ML-KEM-768 ciphertext is 1,088 B, so the label cannot quietly return without this check catching it.'
+            : `still claimed in:\n               ${labels.lines.slice(0, 8).join('\n               ')}`
+    );
+
+    const plainHash = await (async () => {
+        const instance = await ledger.getLedger();
+        const record = (await instance.records()).find((r) => r.data?.id === caseId);
+        const canonical = core.canonicalBytes({
+            index: record.index,
+            timestamp: record.timestamp,
+            previousDigest: record.previousDigest,
+            data: record.data,
+        });
+        const withNodeCrypto = sha256hex(canonical);
+        const block = (await ledger.getBlockchain()).find((b) => b.data?.id === caseId);
+        return {
+            ok: withNodeCrypto === record.leafDigest && isHex64(block.hash) && block.nonce === 0,
+            detail: `node:crypto over the same canonical bytes => ${withNodeCrypto.slice(0, 16)}… vs stored ${record.leafDigest.slice(0, 16)}…; the hash field is ${block.hash.length} bare hex chars with no prefix, and nonce stays 0 because there is no proof of work and none is claimed`,
+        };
+    })();
+    check(
+        'The digest is plain SHA-256 over a canonical record - no constant salt, no double-hash',
+        plainHash.ok,
+        plainHash.detail + '. Two independent SHA-256 implementations agreeing is the point; the old scheme was SHA256(SHA256(data) || a hard-coded "KYBER-1024-ENCAPSULATED-SALT"), which adds zero bits.'
+    );
+
+    console.log('\n=== D. "merkleRoot" field on every block ===');
+
+    const batch = await (async () => {
+        const leaves = [];
+        for (let i = 0; i < 5; i++) {
+            const r = await ledger.addBlock({
+                id: `BATCH-${i}`, cnrNumber: `B/${i}`, complainant: 'X', respondent: 'Y', caseType: 'EVIDENCE',
+                summary: `batch leaf ${i}`, caseNotes: `{"i":${i}}`, filingDate: new Date().toISOString(),
+                incidentDate: new Date().toISOString(), isZeroFir: false, applicableLaw: 'BNS',
+                status: 'FILED', urgency: 'LOW', sectionsInvoked: [], adjournmentsCount: 0,
+            });
+            leaves.push(r.leafDigest);
+        }
+        const instance = await ledger.getLedger();
+        const anchors = await instance.anchors();
+        const last = anchors[anchors.length - 1];
+        const covered = (await instance.records()).filter((r) => r.index >= last.batchStart && r.index <= last.batchEnd);
+        const proofs = [];
+        for (const rec of covered) {
+            const cert = JSON.parse(await ledger.exportCertificate(rec.index));
+            proofs.push(await core.verifyInclusionProof(cert.record.leafDigest, cert.proof, cert.anchor.merkleRoot, {
+                expectedLeafCount: cert.anchor.leafCount,
+            }));
+        }
+        // A proof must NOT verify for a leaf that is not in the batch.
+        const crossUsed = await core.verifyInclusionProof(leaves[0], JSON.parse(await ledger.exportCertificate(covered[covered.length - 1].index)).proof, last.merkleRoot, {
+            expectedLeafCount: last.leafCount,
+        });
+        const referenceRoot = (vals) => {
+            let level = vals.map((l) => sha256hex(Buffer.concat([Buffer.from([0x00]), Buffer.from(l, 'hex')])));
+            while (level.length > 1) {
+                const next = [];
+                for (let i = 0; i < level.length; i += 2) {
+                    if (i + 1 === level.length) { next.push(level[i]); continue; }
+                    next.push(sha256hex(Buffer.concat([Buffer.from([0x01]), Buffer.from(level[i], 'hex'), Buffer.from(level[i + 1], 'hex')])));
+                }
+                level = next;
+            }
+            return level[0];
+        };
+        return {
+            ok: isHex64(last.merkleRoot) && covered.length === last.leafCount && proofs.length === covered.length
+                && proofs.every((p) => p.isValid) && !crossUsed.isValid,
+            detail: `anchor #${last.anchorIndex} covers ${last.leafCount} record(s) [${last.batchStart}..${last.batchEnd}] with root ${last.merkleRoot.slice(0, 16)}…; inclusion verified for every leaf in the batch and refused for a leaf proven against the wrong position. Batch sizes 1..9, empty trees and odd top nodes are covered by tests/trust_primitives.test.ts.`,
+        };
+    })();
+    check(
+        'merkleRoot is a real Merkle root over multiple leaves, with a proof per leaf',
+        batch.ok,
+        batch.detail + ' The old field was SHA256(JSON.stringify(payload)) - one leaf, no tree, so no inclusion proof could exist; in the nationals copy it was literally `merkleRoot: "" // Optional implementation`.'
+    );
+
+    const fieldHonesty = await (async () => {
+        const chain = await ledger.getBlockchain();
+        const instance = await ledger.getLedger();
+        const status = await ledger.getLedgerStatus();
+        const EMPTY = '0'.repeat(64);
+        const anchors = await instance.anchors();
+        const realRoots = new Set(anchors.map((a) => a.merkleRoot));
+        const dataRows = chain.filter((b) => b.data?.kind !== 'ANCHOR');
+        const anchorRows = chain.filter((b) => b.data?.kind === 'ANCHOR');
+        // Two properties, both worth asserting:
+        //  - every evidence row carries a root that some anchor actually produced - no row may
+        //    display a stale or invented one, because the UI table is what a reviewer reads;
+        //  - a row whose index no anchor covers must show the empty root, so "not yet anchored"
+        //    stays distinguishable from "anchored into a different tree".
+        const covered = (index) => anchors.some((a) => index >= a.batchStart && index <= a.batchEnd);
+        const rowsHonest = chain.every((b) => (covered(b.index) ? realRoots.has(b.merkleRoot) : b.merkleRoot === EMPTY));
+        const dataAllCovered = dataRows.every((b) => covered(b.index) && b.merkleRoot !== EMPTY);
+        return {
+            ok: rowsHonest && dataAllCovered && status.unanchored === 0,
+            detail: `${dataRows.length} evidence record(s) all inside an anchor batch; ${anchorRows.filter((b) => covered(b.index)).length}/${anchorRows.length} anchor record(s) themselves covered by a later anchor (the rest trail the last batch and correctly read as the empty root); ${chain.length} row(s) in total, every root traceable to a signed anchor; status reports ${status.unanchored} unanchored.`,
+        };
+    })();
+    check(
+        'A record advertises a Merkle root only when an anchor actually covers it',
+        fieldHonesty.ok,
+        fieldHonesty.detail + ' Anchoring on every write keeps the unprotected window at one record in a browser-only build.'
+    );
+
+    console.log('\n=== E. Consistency of the ledger copies that survive in the tree ===');
+
+    const ledgerFiles = execSync(`find src -name 'akhandLedger.ts'`, { cwd: repoRoot }).toString().trim().split('\n').filter(Boolean);
+    check(
+        'Every ledger copy produces interoperable block hashes',
+        (() => {
+            const formats = new Set();
+            for (const f of ledgerFiles) {
+                for (const m of fs.readFileSync(path.join(repoRoot, f), 'utf8').matchAll(/`(PQC-v1:[^`]*?)\$\{[^}]*\}`/g)) formats.add(m[1]);
+            }
+            return ledgerFiles.length === 1 && formats.size === 0;
+        })(),
+        `${ledgerFiles.length} copy/copies under src/: ${ledgerFiles.join(', ') || 'none'}. The audit found three, each with its own in-memory array and hash format, so a block anchored by one could never be matched by a verifier reading the other. The class-based duplicate under features/nationals is deleted and its two importers now use the façade.`
+    );
+
+    const reachability = await (async () => {
+        const hits = execSync(`grep -rn "akhandLedger'" src --include=*.ts --include=*.tsx || true`, { cwd: repoRoot })
+            .toString().trim().split('\n').filter(Boolean);
+        const importersOf = (file) => hits.filter((l) => !l.startsWith(file + ':') && l.includes("from '"));
+        const dead = ledgerFiles.filter((f) => importersOf(f).length === 0);
+        const importers = [...new Set(ledgerFiles.flatMap((f) => importersOf(f).map((l) => l.split(':')[0])))];
+        return { ok: dead.length === 0 && importers.length >= 4, detail: `dead: ${dead.join(', ') || 'none'}; imported by ${importers.length} file(s)` };
+    })();
+    check(
+        'Every ledger copy is actually reachable from the app',
+        reachability.ok,
+        'A ledger module nobody imports keeps the claims alive for a reviewer while the running app writes elsewhere - that is how the nationals copy survived, reachable from two citizen screens and invisible to the judge. This check fails if such an orphan reappears. ' + reachability.detail
+    );
+
+    console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);
+    if (fail === 0) {
+        console.log('Verdict: the ledger does the three things the app asks of it - it detects');
+        console.log('tampering against a writer, persists across a reload, and can be verified');
+        console.log('offline by a third party holding a pinned key. It is not a blockchain (no');
+        console.log('peers, no consensus, no external timestamping), not post-quantum, not a');
+        console.log('zero-knowledge proof, and a self-signed device key is not non-repudiation.');
+        console.log('See docs/TRUST_MODEL.md before repeating any of those words.');
+        console.log('');
+        process.exit(0);
+    }
+    console.log('At least one claim does not hold. Fix the code, not this file.');
+    console.log('');
+    process.exit(1);
+};
+
+main().catch((err) => {
+    console.error('\nHARNESS ERROR (counted as a failure, never as a pass):');
+    console.error(err instanceof Error ? `${err.message}\n${err.stack?.split('\n')[1]?.trim() ?? ''}` : err);
+    process.exit(1);
+});
