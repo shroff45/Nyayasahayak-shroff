@@ -146,7 +146,7 @@ blockchain-secured, tamper-proof, immutable, court-admissible, non-repudiable, s
 Re-run the proof:
 
 ```bash
-node tools/ledger_repro.cjs          # 24 claims, exit non-zero if any fails
+node tools/ledger_repro.cjs          # 25 claims, exit non-zero if any fails
 npm test                             # 49 tests (trust primitives, ledger, custody, the s.63
                                      # certificate document) + 14 statutory tests
 ```

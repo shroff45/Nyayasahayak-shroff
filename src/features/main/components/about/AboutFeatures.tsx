@@ -67,10 +67,10 @@ const AboutFeatures: React.FC<AboutFeaturesProps> = () => {
             description: 'Track case progress against national benchmarks. Identify delays before they become backlogs.'
         },
         {
-            id: 'quantum',
+            id: 'integrity',
             icon: <ShieldCheck className="w-8 h-8" aria-hidden="true" />,
             title: 'Document Verification',
-            description: 'Blockchain-verified document authenticity. Every filing, every order — cryptographically secured.'
+            description: 'Document authenticity you can re-check. Each file is hashed with SHA-256, the hashes are chained into a journal on this device, and a batch is Merkle-rooted and signed - so an alteration is visible, and nothing is claimed about who made it.'
         }
     ];
 

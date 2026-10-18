@@ -44,7 +44,12 @@ export interface AdjournmentRisk {
     predictedDelayMonths: number;
 }
 
-export interface BlockchainBlock {
+/**
+ * One journal entry as a screen renders it. Called `BlockchainBlock` until 4(e): the name was the
+ * last thing in the type layer that implied a chain of blocks agreed on by several machines, when
+ * this is a projection of a local, hash-chained, Merkle-batched log.
+ */
+export interface LedgerEntry {
     index: number;
     timestamp: string;
     data: any;

@@ -98,7 +98,7 @@ export interface DetectionResult {
 
 export interface AIDecisionTrace {
     traceId: string;
-    agent: 'JUDGE_ASSIST' | 'EVIDENCE_AI' | 'BLOCKCHAIN_WATCHDOG' | 'SYSTEM';
+    agent: 'JUDGE_ASSIST' | 'EVIDENCE_AI' | 'INTEGRITY_WATCHDOG' | 'SYSTEM';
     action: string;
     confidence: number;
     timestamp: string;

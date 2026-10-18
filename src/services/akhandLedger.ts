@@ -24,7 +24,7 @@
  * evidence a third party can check. `isSelfSignedOnly()` exists so the UI can say which of the
  * two states it is in rather than implying the stronger one. See docs/TRUST_MODEL.md.
  */
-import type { BlockchainBlock, Case, VerificationResult } from '../types';
+import type { LedgerEntry, Case, VerificationResult } from '../types';
 import type { SmartBailContract } from '../types';
 import {
     createLedger,
@@ -124,11 +124,13 @@ export const getLedger = async (): Promise<Ledger> => {
 };
 
 /** Call once at startup. Kept for `App.tsx`, which mounted it as an effect. */
-export const initializeBlockchain = async (): Promise<Ledger> => getLedger();
+/** Warms the journal. It was `initializeBlockchain`: nothing here is a blockchain - no peers, no
+ * consensus, no external timestamp - so the name promised a mechanism the code does not have. */
+export const initializeLedger = async (): Promise<Ledger> => getLedger();
 
 const bail = async () => createBailLedger(await getLedger());
 
-const recordToBlock = (record: LedgerRecord, merkleRootFor: (i: number) => string): BlockchainBlock => ({
+const toLedgerEntry = (record: LedgerRecord, merkleRootFor: (i: number) => string): LedgerEntry => ({
     index: record.index,
     timestamp: record.timestamp,
     data: record.data,
@@ -244,7 +246,8 @@ export const verifyChainIntegrity = async (): Promise<{
     };
 };
 
-export const getBlockchain = async (): Promise<BlockchainBlock[]> => {
+/** The journal as the screens want to show it: every record plus the Merkle root it was batched under. */
+export const getLedgerEntries = async (): Promise<LedgerEntry[]> => {
     const ledger = await getLedger();
     const records = await ledger.records();
     const anchors = await ledger.anchors();
@@ -252,7 +255,7 @@ export const getBlockchain = async (): Promise<BlockchainBlock[]> => {
         const covering = anchors.find((a) => index >= a.batchStart && index <= a.batchEnd);
         return covering ? covering.merkleRoot : EMPTY_ROOT;
     };
-    return records.map((r) => recordToBlock(r, rootFor));
+    return records.map((r) => toLedgerEntry(r, rootFor));
 };
 
 export const getLedgerStatus = async (): Promise<LedgerStatus> => {

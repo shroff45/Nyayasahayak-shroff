@@ -338,7 +338,7 @@ const App: React.FC = () => {
     // empty chain that looks like "no evidence yet".
     useEffect(() => {
         import('./services/akhandLedger')
-            .then((m) => m.initializeBlockchain())
+            .then((m) => m.initializeLedger())
             .catch((error) => {
                 console.error('Ledger unavailable:', error);
             });

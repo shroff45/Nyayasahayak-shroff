@@ -85,14 +85,14 @@ const LandingPage = () => {
                 <div className="grid md:grid-cols-2 gap-12 items-center">
                     <div className="space-y-8">
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 shadow-sm text-xs font-bold text-orange-600 uppercase tracking-wide">
-                            <Activity size={12} />Live Blockchain Network
+                            <Activity size={12} />Local integrity ledger
                         </div>
                         <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.1]">
                             Justice at the <br />
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-600">Speed of Voice.</span>
                         </h1>
                         <p className="text-lg text-slate-600 max-w-lg leading-relaxed">
-                            India's first AI-powered judicial interface. File FIRs via voice, visualize bail conditions, and predict case delays using our quantum-secure ledger.
+                            An AI-assisted judicial interface: draft a complaint by voice, read the bail conditions the case carries, and see how long the matter has been waiting. Every exhibit is hashed and written to a ledger on this device - not to a network, and not to any court's systems.
                         </p>
                         <div className="flex items-center gap-4 text-sm font-semibold text-slate-500">
                             <span className="flex items-center gap-1"><Lock size={14} className="text-green-600" />End-to-End Encrypted</span>
