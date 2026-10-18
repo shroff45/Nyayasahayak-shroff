@@ -44,7 +44,6 @@ const QuantumFingerprinting = React.lazy(() => import('./features/main/component
 const DraftJudgmentPanel = React.lazy(() => import('./components/DraftJudgmentPanel'));
 const AdjournmentRiskPanel = React.lazy(() => import('./components/AdjournmentRiskPanel'));
 const NyayaChitra = React.lazy(() => import('./components/NyayaChitra'));
-const QuantumHashProof = React.lazy(() => import('./components/QuantumHashProof'));
 
 // Citizen-specific Components (VoiceFilingInterface used directly in citizen routes)
 const CitizenHomePage = React.lazy(() => import('./personas/citizen/pages/CitizenHome'));
@@ -317,14 +316,6 @@ const NyayaChitraWrapper: React.FC = () => {
     );
 };
 
-const QuantumHashWrapper: React.FC = () => {
-    return (
-        <React.Suspense fallback={<LoadingFallback />}>
-            <QuantumHashProof caseId="DEMO-CASE-001" />
-        </React.Suspense>
-    );
-};
-
 // Note: VoiceFilingWrapper removed - Police FIR now uses SmartFIRPage
 // Citizen voice filing uses VoiceFilingInterface directly in citizen routes
 
@@ -416,7 +407,6 @@ const App: React.FC = () => {
                                 <Route path="chargesheet" element={<React.Suspense fallback={<LoadingFallback />}><ChargeSheetGatePage /></React.Suspense>} />
                                 <Route path="chargesheet/:caseId/gate" element={<React.Suspense fallback={<LoadingFallback />}><ChargeSheetGatePage /></React.Suspense>} />
                                 <Route path="quantum" element={<QuantumFingerprintWrapper />} />
-                                <Route path="hash" element={<QuantumHashWrapper />} />
                                 <Route path="patrol" element={<React.Suspense fallback={<LoadingFallback />}><PatrolMapPage /></React.Suspense>} />
                                 <Route path="roster" element={<React.Suspense fallback={<LoadingFallback />}><DutyRosterPage /></React.Suspense>} />
                                 <Route path="bot" element={<NyayaBotWrapper />} />
