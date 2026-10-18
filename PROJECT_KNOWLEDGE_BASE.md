@@ -16,7 +16,7 @@ This document exists so you can point at a line and say "do that." Section 13 is
 | 2a | Rotate the API key at Google | **NOT NEEDED** — measured after the fact: the committed 24-char value starts `YO` and fails Google's `^AIza[0-9A-Za-z_-]{35}$` shape, i.e. an unfilled placeholder, and only one content version of `.env` has ever existed. Nothing was exposed. If you did paste a real key at some point outside this repo's history, rotate it in AI Studio anyway |
 | 3 | `git filter-repo` + force-push `main` | **RECOMMEND NOT DOING IT** (see D1: the value was a placeholder). Left here in case you want it anyway: `pip install git-filter-repo` → `git filter-repo --path .env --invert-paths --force` → `git push --force-with-lease origin main`. Note GitHub keeps the old objects reachable via PR refs and its own GC, and every other clone of yours must be re-pointed — cost without benefit for a non-secret |
 | 4 | Sequence after D0 | **updated after PR #3 merged**: 4(e) done → **PR #4 (in flight)** D18 integrity check → Q9/D19 About → census tool + `docs/PLAN_4a.md` → **PR #5** D20 intake-to-ledger + Playwright (its own PR, so a flaky browser install cannot block the trust fix) → 4(a) Case unification → IndexedDB default → purge → locales → crypto-js |
-| 5–13 | recorded, scheduled | Q7 delete `src/features/nationals/` (open, 4(purge)); **Q8 CLOSED** - `QuantumHashProof` deleted in `d2d26bb2`, and the fingerprint screen became a real check on route `/integrity` in PR #4 commit 1; **Q9 CLOSED** - `About` is routed at `/about` (public *and* authenticated branches) and linked from all three live persona sidebars, which required D19's copy fixes first; Q10 7 locales + lazy rest (open); **Q11 SCHEDULED for PR #5** - Playwright, one chained journey, after D20 makes the chain real; Q12 provisional skeleton, publishing paused; **Q13 IN FLIGHT** - `docs/PLAN_4a.md` lands in this PR, ahead of 4(a), as its first commit |
+| 5–13 | recorded, scheduled | Q7 delete `src/features/nationals/` (open, 4(purge)); **Q8 CLOSED** - `QuantumHashProof` deleted in `d2d26bb2`, and the fingerprint screen became a real check on route `/integrity` in PR #4 commit 1; **Q9 CLOSED** - `About` is routed at `/about` (public *and* authenticated branches) and linked from all three live persona sidebars, which required D19's copy fixes first; Q10 7 locales + lazy rest (open); **Q11 SCHEDULED for PR #5** - Playwright, one chained journey, after D20 makes the chain real; Q12 provisional skeleton, publishing paused; **Q13 CLOSED** - `docs/PLAN_4a.md` is in the repository, so 4(a) opens from `HEAD` and not from a path on one person's machine |
 
 **Full gate, run locally for the first time on the synced tree** (previously impossible — the tracked Windows `node_modules` broke every tool that spawns esbuild): `tsc --noEmit` → **0 errors**; `npm test` → **49 node tests pass** + **14 statute tests pass**; `node tools/ledger_repro.cjs` → **18 claims hold, 0 do not**; `npm run build` → 98 assets, largest **577.74 kB** of the 600 kB per-asset budget (22.26 kB spare). `npm run lint` → **red**, see §12.
 
@@ -46,8 +46,9 @@ that no longer exists.
 
 | commit | what | gate |
 |---|---|---|
+| _this commit_ | **the census, made reproducible** — `tools/resolve-importers.mjs` (dep-free ESM: aliases parsed out of `vite.config.ts` *and* `tsconfig.json` with `--check` failing if they drift, comments stripped so prose cannot pass as code, `React.lazy(() => import(…))` counted as the real edge it is, BFS from `src/main.tsx`; modes census / `--orphans [--min]` / `--model <path> [--symbol Case]` / `--json` / `--check`), plus `docs/PLAN_4a.md` so block 4(a) opens from `HEAD` instead of from a machine-specific path (Q13). Every stale count in this file is corrected to what the tool measures, including the two this document had wrong in public: §3's grep-era reachability (119/112 → 131/98) and §8's namer set (17 → 16). | tsc 0 (no `src/` file touched) · 49+14 · 25/25 · build 0 · census 229 files, 131 reachable, 98 unreachable / 19,611 lines, 0 unresolved |
 | `02d9a6c` | **D18** - the language model no longer invents digests. `generateQuantumFingerprint` + `QuantumFingerprintResult` + `anomalyDetector` deleted; real `sha256Hex`/`sha256OfFile` over the user's own bytes; journal lookup with case-insensitive digest matching (the locker stores upper-case, `sha256Hex` returns lower); three verdicts, `FOUND (anchored at index n)` / `FOUND (not yet anchored)` / `NOT IN JOURNAL`, with `anchored` read from `getProof() !== null` and never from a record field; route `quantum` → `integrity` in both branches; the duplicate panel inside `DocumentAnalysis` cut (339 → 153 lines); both dead nationals twins and `QuantumFingerprinting.tsx` removed; 22 orphaned locale keys dropped × 23 tables (552 lines); harness F mounts the new screen, G forbids the invented API | tsc 0 · 49+14 · **25/25** · build 0, largest asset 543.13 kB |
-| _this commit_ | **Q9 + D19** - `About` published at `/about` and linked from the citizen, police and judge sidebars, with its marketing copy replaced by claims the repository can answer. The CTA button now goes somewhere (it was calling an optional prop nobody passed, and the hero's `Sign In` had no handler at all); `AboutStats`' four simulated counters became four checkable numbers; AboutTech's `Court-Grade Security` / `End-to-End encryption` / `WCAG 2.1 AA` / `e-Courts Aligned` chips and LandingPage's `End-to-End Encrypted` badge are gone; `Automated Summons Generation` left the judge list because no file in `src` except that list mentions a summons; H's vocabulary learned `end[- ]to[- ]end encryption` and `court[- ]?grade`, F's retired list learned the eight retired phrases, and both were proved to bite by planting and reverting. The `5 crore cases pending` figure stays, now attributed to the National Judicial Data Grid instead of implied to be this project's own. | tsc 0 · 49+14 · **25/25** · build 0, largest asset 543.69 kB · 99 assets |
+| `95789de` | **Q9 + D19** - `About` published at `/about` and linked from the citizen, police and judge sidebars, with its marketing copy replaced by claims the repository can answer. The CTA button now goes somewhere (it was calling an optional prop nobody passed, and the hero's `Sign In` had no handler at all); `AboutStats`' four simulated counters became four checkable numbers; AboutTech's `Court-Grade Security` / `End-to-End encryption` / `WCAG 2.1 AA` / `e-Courts Aligned` chips and LandingPage's `End-to-End Encrypted` badge are gone; `Automated Summons Generation` left the judge list because no file in `src` except that list mentions a summons; H's vocabulary learned `end[- ]to[- ]end encryption` and `court[- ]?grade`, F's retired list learned the eight retired phrases, and both were proved to bite by planting and reverting. The `5 crore cases pending` figure stays, now attributed to the National Judicial Data Grid instead of implied to be this project's own. | tsc 0 · 49+14 · **25/25** · build 0, largest asset 543.69 kB · 99 assets |
 
 ## 1. What this project actually is
 
@@ -112,9 +113,25 @@ git status --porcelain         → 0 (tree untouched; also chmod +x on .bin shim
 
 CI passes only because `.github/workflows/ci.yml` runs `npm ci` first. **Fixed by the hygiene commit in §0**: `.gitignore` already listed `node_modules/`, `dist`, `dist/` and `.env` (lines 42, 71, 84, 117, 129) — the entries were simply inert because the paths were already tracked, which is why untracking, not gitignoring, was the actual repair. Two footnotes for the next person debugging a clone: (a) a fresh `npm ci` is mandatory, and (b) if `node_modules` ever came from git rather than npm, the `.bin/*` shims and `@esbuild/<platform>/bin/esbuild` lose their exec bit → `spawnSync … EACCES`, fixed by `chmod +x node_modules/.bin/*` or a clean `npm ci`.
 
-### D3 — 37.7% of `src/` is unreachable
+### D3 — 34.7% of `src/` is unreachable (37.7% when this line was written)
 
-119 of 231 files are reachable from `src/main.tsx` through resolved static **and** `React.lazy` dynamic imports; 112 are not. By lines: 35,983 live of 57,767 total. Largest islands: `src/features/nationals/components` (24 files / 3,786 lines), `src/features/main/components/about` (8 / 1,426), `src/features/main/components` (9 / 1,107), `src/personas/judge/components` (4 / 755), `src/personas/citizen/components` (4 / 582), `src/components` (5 / 752), `src/modules` (2 / 229).
+Re-measured with `node tools/resolve-importers.mjs`, which is now the only acceptable way to state a
+number in this section: **131 of 229** files reachable from `src/main.tsx` through resolved static
+**and** `React.lazy` dynamic imports; **98** are not, **19,611** lines of 56,464. It was 119/112 and
+37.7% when this line was written, and the difference is this programme's own doing: D9's demo route
+deletion, D18's three deleted quantum copies, and Q9 publishing the About page — which alone moved 8
+files / 1,426 lines out of the island in one commit, because publishing a page is a reachability
+change.
+
+Largest remaining islands by lines: `src/features/nationals` (50 files / 12,263 — 63% of all
+unreachable lines, and one `git rm -r` if Q7 says delete), `src/features/main` (13 / 2,468),
+`src/personas/citizen` (5 / 1,028), `src/personas/judge` (4 / 755), `src/components` (5 / 752),
+`src/shared/components` (6 / 613). The full list with per-file sizes and "no importers at all"
+markers: `node tools/resolve-importers.mjs --orphans`.
+
+Two things this section used to get wrong and should not be trusted to repeat: it stated its counts
+from grep (see §8's method note), and it treated an unreachable file as an inert one — but `tsc`
+typechecks all of `src/`, so the dead 98 gate every merge on this branch.
 
 ## 4. Runtime architecture
 
@@ -196,16 +213,39 @@ The About page and the landing page's `End-to-End Encrypted` badge were **not** 
 
 ## 8. The four `Case` models — and the only safe way to change them
 
+Measured by `node tools/resolve-importers.mjs --model <file> --symbol Case`, i.e. resolved rather than
+grepped, and re-measurable by anyone in one command per row:
+
 | file | shape | importers | **live** importers | naming `Case` | live namers |
 |---|---|---|---|---|---|
-| `src/types.ts` | golden, 19 fields, several required | 12 | **6** | 7 | **2** (`src/components/DraftJudgmentPanel.tsx`, the adapter) |
+| `src/types.ts` | golden, 19 fields, several required | 11 | **5** | 7 | **3** (`DraftJudgmentPanel`, the adapter, `akhandLedger`) |
 | `src/core/types.ts` | strict subset, missing **6** golden fields (4 required: `adjournmentsCount` `incidentDate` `isZeroFir` `applicableLaw`; 2 optional: `judgeId?` `zeroFirTransferStatus?`) | 7 | **0** | 3 | 0 |
-| `src/features/main/types.ts` | legacy intake (`caseNumber` `petitioner` `invokedActs` `title` `complexityScore` `pii`) | 16 | 13 | 10 | **9** ← the real migration bulk |
-| `src/features/nationals/core/types.ts` | union-shaped, nearly all optional, both spellings | 23 | **4** | 10 | **1** (`nationals/modules/judge/JudgeDashboard.tsx`, `App.tsx:83`) |
+| `src/features/main/types.ts` | legacy intake (`caseNumber` `petitioner` `invokedActs` `title` `complexityScore` `pii`) | 15 | 12 | 9 | **8** ← the real migration bulk |
+| `src/features/nationals/core/types.ts` | union-shaped, nearly all optional, both spellings | 21 | **4** | 9 | **1** (`nationals/modules/judge/JudgeDashboard.tsx`, reached from `App.tsx:83`) |
 
-Method that produced this: resolve every `from` specifier through the alias table **plus the importing file's own directory**, then BFS from `src/main.tsx` counting `React.lazy(() => import(…))` as a real edge. grep alone reported 3 legacy importers (13 more write `../types`) and merged two different `core/types.ts` files into one fake 29-file block. Resolution is authoritative; grep is a candidate-finder only.
+Method, now a program instead of a paragraph: resolve every `from` specifier through the alias table
+read out of `vite.config.ts` **and** `tsconfig.json` (and fail if those two disagree), resolve relative
+specifiers against the importing file's own directory, count `React.lazy(() => import(…))` as a real
+edge, strip comments and JSX text before searching for a name, then BFS from `src/main.tsx`. grep
+alone reported 3 legacy importers where there are 15, and merged two different `core/types.ts` files
+into one fake 29-file block. **Resolution is authoritative; grep is a candidate-finder** — and now
+there is no excuse for using grep, because the resolver is in the repository.
 
-The rule that governs commit ordering: **`tsc` typechecks dead files** (`include: ["src"]`). So any unreachable file that names a type you edit must be deleted or fixed **in the same commit**, or the gate goes red on code nobody runs. The full set — unreachable files naming `Case` from one of the four models — is **17 files**; a directory-based list misses 2 of them (`src/features/nationals/constants/mockData.ts` with 7 `Case` literal constructions, and `src/features/nationals/modules/citizen/VoiceFilingInterface.tsx` with 3).
+The rule that governs commit ordering: **`tsc` typechecks dead files** (`include: ["src"]`). So any
+unreachable file that names a type you edit must be deleted or fixed **in the same commit**, or the
+gate goes red on code nobody runs. The full set — unreachable files naming `Case` from any of the four
+models — is **16 files**, the union of the four `--model … --symbol Case` dead lists with no file
+counted twice. It was recorded here as 17 for a while, and 17 was right when it was written:
+`src/features/nationals/components/DocumentAnalysis.tsx` was a namer until D18 deleted it. A
+directory-based list misses 2 of the 16 (`src/features/nationals/constants/mockData.ts` with 7 `Case`
+literal constructions, and `src/features/nationals/modules/citizen/VoiceFilingInterface.tsx` with 3),
+because the files beside them in those directories are live.
+
+One measurement note kept on purpose, because it is why the tool strips JSX text before it searches:
+an earlier draft of the census counted a file as a namer if the *word* appeared in it at all, which
+swept in `CaseSummaryCard.tsx` — a component rendering the heading "Case Summary" — and reported 18.
+Quoted strings and the prose between two tags name a heading, not a type. A tool that replaces a
+careless grep has to be at least as careful about what counts as a use.
 
 Related invariants: golden `src/types.ts` `Case` must not be *edited* by 4(a), only consumed differently — that is the sole reason two dead golden namers (`components/CaseDetailsPanel.tsx`, `CaseQueue.tsx`) stay green. And the twin trap: four files named `DraftJudgmentPanel.tsx` exist, only `src/components/DraftJudgmentPanel.tsx` is routed (`App.tsx:44` → `:280`), and the live one is the terminal consumer of `toGoldenCase(selectedCase)` at `App.tsx:248`.
 
@@ -260,14 +300,14 @@ Rules that have kept this project from lying to itself: `tools/ledger_repro.cjs`
 | D5 | **closed** (`174d9484`): live strings re-labelled, and harness group H fails the build if such a claim returns to a reachable file. | §7 | high | 4(e)
 | D6 | ledger defaults to a silently-volatile store | `store.ts` `defaultDriver()` | high | 4(new) |
 | D7 | 4 competing `Case` models + adapter; journal rows already heterogeneous | §8, `LedgerSubject` | high | 4(a) |
-| D8 | 112 unreachable files / 21,784 lines | §3 D3 | medium | 4(purge) |
+| D8 | 98 unreachable files / 19,611 lines (was 112 / 21,784 before D9, D18 and Q9; `node tools/resolve-importers.mjs` reproduces it) | §3 D3 | medium | 4(purge) |
 | D9 | **closed** (`d2d26bb2`): route, wrapper, lazy import and both component copies deleted. | `App.tsx:318` | medium | 4(e)
 | D10 | **closed** (`174d9484`): `initializeLedger` / `getLedgerEntries` / `LedgerEntry`; `App.tsx`, judge `HashVerifier`, `src/types.ts` and the harness moved in the same commit. (`getLedger` and `LedgerRecord` were already taken by two different shapes — using them would have created a new ambiguity instead of ending one.) | `akhandLedger.ts:127,247` | medium | 4(e)/4(d)
 | D11 | 18 of 23 locale tables unreachable, all in the entry chunk; two translation files drifting | §10 | medium | 4(c) |
 | D12 | hardcoded `INTEGRITY_SECRET`; auth is a role picker | `AuthContext.tsx:24` | medium | decide, §14 Q6 |
 | D13 | `crypto-js` still in auth while the trust layer is WebCrypto | `AuthContext.tsx:7` | low | 4(b) |
 | D14 | missing `incidentDate` resolves to the stricter branch | `forensicInterlock.ts` | low-but-legal | 4(a)-i note |
-| D15 | **half-closed** (`4aa7620e`): `eslint@^8.57` is now a devDependency so the declared gate runs — and it is red (154 problems in 56 files: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `ban-ts-comment`, 2 `exhaustive-deps`; 100 `no-explicit-any`). Not added to CI yet; the purge block removes roughly half the offenders. | fixed in §0 (`eslint@^8.57`, matching the legacy `.eslintrc.json` format); the gate now **runs and is red**: 154 problems in 56 files (42 errors: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `@typescript-eslint/ban-ts-comment`, 2 `react-hooks/exhaustive-deps`; 112 warnings: 100 `no-explicit-any`, 12 `no-unused-vars`) | medium | 4(purge) — deleting the 112 unreachable files removes roughly half the offenders; do **not** add to CI until green
+| D15 | **half-closed** (`4aa7620e`): `eslint@^8.57` is now a devDependency so the declared gate runs — and it is red (154 problems in 56 files: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `ban-ts-comment`, 2 `exhaustive-deps`; 100 `no-explicit-any`). Not added to CI yet; the purge block removes roughly half the offenders. | fixed in §0 (`eslint@^8.57`, matching the legacy `.eslintrc.json` format); the gate now **runs and is red**: 154 problems in 56 files (42 errors: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `@typescript-eslint/ban-ts-comment`, 2 `react-hooks/exhaustive-deps`; 112 warnings: 100 `no-explicit-any`, 12 `no-unused-vars`) | medium | 4(purge) — deleting the 98 unreachable files removes roughly half the offenders; do **not** add to CI until green
 | D17 | **closed** (`e3642d9d`): all three suppressions gone, and each was hiding something — see the 4(e) execution log. Enforced by harness group H-era check "No compiler suppressions anywhere in src/", proven falsifiable by planting a directive and watching it fail. | `src/features/main/services/geminiService.ts:158`, `features/main/components/LitigantHappiness.tsx:29`, `features/nationals/components/LitigantHappiness.tsx:29` (last one dies with D8) | medium | 4(e) — fix the real type instead of suppressing
 | D16 | `docs/` exists but no user-facing README of what is/isn't implemented | — | low | 4(e) |
 | D18 | **closed** (`02d9a6c`): the screen now hashes the bytes in front of it and looks for the digest in the journal; the vocabulary, the case-insensitivity and the `getProof()`-only notion of "anchored" are asserted by harness group G. The AI document-analysis path in the same file is untouched - that one is a legitimate use of the model. | `geminiService.ts:229` (was) | **high** | 4(e) → PR #4 |
