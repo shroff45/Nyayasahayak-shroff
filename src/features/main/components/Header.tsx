@@ -45,7 +45,11 @@ const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, language, setL
                 { label: 'Voice Filing', value: 'Voice Filing' },
                 { label: t('tab_nyayabot'), value: 'NYAYABOT' },
                 { label: t('tab_legal_tech_hub'), value: 'Legal Tech Hub' },
-                { label: 'Quantum Proof', value: 'Quantum Proof' },
+                // The screen computes a document fingerprint and checks it against the ledger.
+                // Both label and tab key used to read 'Quantum Proof', a claim with no mechanism
+                // behind it; the key is local to this file, so renaming it changes nothing but the
+                // wording a user is shown.
+                { label: 'Document Fingerprint', value: 'Document Fingerprint' },
             ]
         },
         {

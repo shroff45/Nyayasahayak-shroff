@@ -37,8 +37,8 @@ const AboutTech: React.FC<AboutTechProps> = ({ t: _t }) => {
         {
             id: 'blockchain',
             icon: <Database className="w-6 h-6" aria-hidden="true" />,
-            title: 'Blockchain Ledger',
-            description: 'Immutable document verification with cryptographic proofs'
+            title: 'Tamper-evident ledger',
+            description: 'Exhibit digests are recorded in a local journal, batched into a Merkle tree, and the root is signed by this terminal\'s pinned key. One record can be exported as a certificate a third party verifies offline.'
         },
         {
             id: 'languages',

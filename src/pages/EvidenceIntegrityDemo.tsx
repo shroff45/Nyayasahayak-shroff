@@ -80,7 +80,10 @@ const generateMockExpertToken = (isVerified: boolean): ForensicVisitToken | null
             address: 'Crime Scene, Sector 4, Bangalore'
         },
         handshakeMethod: 'QR_CODE',
-        digitalSignature: 'sig_kyber_dilithium_xyz',
+        // No signature is captured by this demo. 'NOT-SIGNED' rather than a string that looks like
+        // a Kyber/Dilithium signature: a fixture that reads as cryptographic material gets quoted
+        // as evidence that cryptographic material exists.
+        digitalSignature: 'NOT-SIGNED',
         isVerified: true
     };
 };
