@@ -13,7 +13,9 @@ const LitigantHappiness: React.FC<LitigantHappinessProps> = ({ t }) => {
     const [npsScore, setNpsScore] = useState<number | null>(null);
     const [feedback, setFeedback] = useState('');
     const [submitted, setSubmitted] = useState(false);
-    const npsScoreRef = useRef(null);
+    // Was `useRef(null)`, which types `current` as null - the suppression on the line below was
+    // papering over that, not a gsap typing problem.
+    const npsScoreRef = useRef<HTMLParagraphElement>(null);
 
     const overallNps = ((mockNpsData[0].value - mockNpsData[2].value) / (mockNpsData[0].value + mockNpsData[1].value + mockNpsData[2].value)) * 100;
 
@@ -24,10 +26,12 @@ const LitigantHappiness: React.FC<LitigantHappinessProps> = ({ t }) => {
                 duration: 2,
                 ease: "power1.inOut",
                 snap: { textContent: 0.1 },
-                onUpdate: function () {
+                onUpdate: function (this: { targets(): Array<{ textContent?: string | null }> }) {
                     if (npsScoreRef.current) {
-                        // @ts-ignore
-                        npsScoreRef.current.innerHTML = parseFloat(this.targets()[0].textContent).toFixed(1);
+                        // A tween target is an Element, whose textContent is nullable, so the number
+                        // has a starting value rather than becoming "NaN" on screen for two seconds.
+                        const from = this.targets()[0]?.textContent;
+                        npsScoreRef.current.innerHTML = parseFloat(from && from.trim() ? from : '0').toFixed(1);
                     }
                 }
             });

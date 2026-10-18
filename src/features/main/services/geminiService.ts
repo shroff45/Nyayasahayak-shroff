@@ -3,13 +3,37 @@ import { GoogleGenAI, Type, GenerateContentResponse, Part } from "@google/genai"
 import { PredictionResult, Case, DocumentAnalysisResult, ChatMessage, QuantumFingerprintResult } from "../types";
 import { withErrorRecovery } from "../lib/withErrorRecovery";
 
-const API_KEY = import.meta.env.VITE_API_KEY;
+/**
+ * The Gemini API key is optional. This application's guarantees - hashing the evidence, chaining the
+ * journal, anchoring a batch and printing a certificate that re-verifies offline - are all computed
+ * locally and must keep working with no key at all. The language-model screens are an enhancement.
+ *
+ * This used to be a module-scope `throw` when the key was missing, which meant a clone without a key
+ * did not merely lose the AI features: the import blew up and five routed screens rendered nothing.
+ * A module import must never be able to take the app down. So the client is built lazily, on first
+ * use, and every consumer asks `isGeminiConfigured()` before it tries to.
+ */
+const PLACEHOLDER = /^(your|xxx|todo|tbd|changeme|replace|placeholder|dummy|sample|none|<)/i;
 
-if (!API_KEY) {
-    throw new Error("API_KEY environment variable is not set.");
-}
+const readKey = (): string | undefined => {
+    const key = (import.meta.env.VITE_API_KEY as string | undefined)?.trim();
+    // A .env checked in with `YOUR_KEY_HERE` in it is as unconfigured as no file at all, and treating
+    // it as real would send a doomed request on every click and blame the network for it.
+    if (!key || PLACEHOLDER.test(key)) return undefined;
+    return key;
+};
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+export const isGeminiConfigured = (): boolean => readKey() !== undefined;
+
+let client: GoogleGenAI | null = null;
+const gemini = (): GoogleGenAI => {
+    const key = readKey();
+    if (!key) {
+        throw new Error('Gemini is not configured: set VITE_API_KEY in .env to enable the language-model screens.');
+    }
+    if (!client) client = new GoogleGenAI({ apiKey: key });
+    return client;
+};
 
 const predictCaseOutcomeInternal = async (sanitizedCase: Case, language: string): Promise<PredictionResult> => {
     const langMap: { [key: string]: string } = {
@@ -39,7 +63,7 @@ const predictCaseOutcomeInternal = async (sanitizedCase: Case, language: string)
     };
     const targetLanguage = langMap[language as keyof typeof langMap] || 'English';
 
-    const response = await ai.models.generateContent({
+    const response = await gemini().models.generateContent({
         model: "gemini-2.5-pro",
         contents: `Analyze the following Indian legal case and provide a triage assessment. The entire JSON response, including all text fields like rationale and contributingFactors, must be in ${targetLanguage}. Case Data: ${JSON.stringify(sanitizedCase)}`,
         config: {
@@ -76,7 +100,7 @@ const predictCaseOutcomeInternal = async (sanitizedCase: Case, language: string)
 };
 
 const analyzeDocumentsInternal = async (parts: Part[]): Promise<DocumentAnalysisResult> => {
-    const response = await ai.models.generateContent({
+    const response = await gemini().models.generateContent({
         model: "gemini-2.5-pro",
         contents: { parts: [...parts, { text: "Analyze the provided Indian legal documents. Summarize them, assess severity, provide a confidence score for your analysis, and recommend the appropriate court. Also, extract the key legal issues, identify all entities (people, organizations, locations, dates), and list any potential legal precedents or cited case laws." }] },
         config: {
@@ -152,12 +176,17 @@ const chatWithNyayabotInternal = async (message: string, ragParts?: Part[], hist
     // Add the current user message to the contents array
     contents.push({ role: 'user', parts: currentMessageParts });
 
-    const response = await ai.models.generateContent({
+    // These two fields used to sit next to `config` rather than inside it, under a suppression comment
+    // that claimed the SDK types were out of date. They were not: the SDK ignores unknown fields, so the
+    // topic guardrail and the search tool were silently dropped on every call. Removing the
+    // suppression is what found it.
+    const response = await gemini().models.generateContent({
         model: 'gemini-2.5-flash',
         contents: contents,
-        // @ts-ignore - systemInstruction is valid in some versions but types might be outdated
-        systemInstruction: "You are NYAYABOT. You are strictly strictly limited to discussing Social Sciences, History, Geography, and Political studies or civics. If a user asks about anything else, politely decline and explain that you only discuss these topics. Do not answer questions outside this scope. You can use Google Search to find accurate information regarding these subjects.",
-        tools: useGoogleSearch ? [{ googleSearch: {} }] : [],
+        config: {
+            systemInstruction: "You are NYAYABOT. You are strictly limited to discussing Social Sciences, History, Geography, and Political studies or civics. If a user asks about anything else, politely decline and explain that you only discuss these topics. Do not answer questions outside this scope. You can use Google Search to find accurate information regarding these subjects.",
+            tools: useGoogleSearch ? [{ googleSearch: {} }] : [],
+        },
     });
     return response;
 };
@@ -199,7 +228,7 @@ const generateQuantumFingerprintInternal = async (content: string | Part[], lang
 
     parts.push({ text: `Act as a quantum security analysis system. Based on the provided document content (text or files), generate a unique quantum cryptographic hash and a data integrity report. The content is considered a legal document, and the report should verify its integrity. The entire JSON response must be in ${targetLanguage}.` });
 
-    const response = await ai.models.generateContent({
+    const response = await gemini().models.generateContent({
         model: "gemini-2.5-pro",
         contents: { parts: parts },
         config: {
@@ -235,52 +264,76 @@ const generateQuantumFingerprintInternal = async (content: string | Part[], lang
 };
 
 
-const fallbackPrediction: PredictionResult = {
-    priority: 'Medium',
-    rationale: 'Could not retrieve AI analysis due to a network error. This is a fallback response.',
-    contributingFactors: ['API communication failure'],
-    legalCitations: ['N/A']
-};
+/** What to tell the user when no analysis exists. One string, so the five screens cannot drift. */
+export const AI_NOT_CONFIGURED =
+    'AI analysis is not configured. Set VITE_API_KEY in .env and restart the dev server. Nothing was sent, and nothing was invented in its place.';
 
-const fallbackDocAnalysis: DocumentAnalysisResult = {
-    summary: 'Could not analyze document due to an error.',
+type Unavailability = 'unconfigured' | 'unreachable';
+
+const whyNot = (reason: Unavailability): string =>
+    reason === 'unconfigured'
+        ? 'AI analysis is not configured on this device, so no request was made.'
+        : 'AI analysis could not be reached. This is a fallback response, not a result.';
+
+// These two objects are the shape the screens already know how to render. They carry no verdict that
+// the model did not give: `severity`/`priority` are the type's required fields, so they are pinned to
+// the least alarming value and the summary says plainly that nothing was analysed.
+const fallbackPrediction = (reason: Unavailability): PredictionResult => ({
+    priority: 'Medium',
+    rationale: whyNot(reason),
+    contributingFactors: [reason === 'unconfigured' ? 'VITE_API_KEY not set' : 'API communication failure'],
+    legalCitations: ['N/A']
+});
+
+const fallbackDocAnalysis = (reason: Unavailability): DocumentAnalysisResult => ({
+    summary: whyNot(reason),
     severity: 'Medium',
     confidenceScore: 0.0,
     recommendedCourt: 'N/A',
-    keyLegalIssues: ['Error retrieving data.'],
+    keyLegalIssues: ['No analysis available.'],
     identifiedEntities: [],
     potentialPrecedents: ['N/A'],
     riskScore: 0, // Added default
     entities: [], // Added default
     sentiment: 'Neutral' // Added default
-};
+});
 
-const fallbackFingerprint: QuantumFingerprintResult = {
-    quantumHash: 'Error generating hash: Fallback response due to API failure.',
-    integrityStatus: 'Potential Tampering Detected',
-    anomaliesDetected: ['Failed to connect to the quantum verification service.'],
-    verificationTimestamp: new Date().toISOString(),
-    hash: '', // Added default
-    timestamp: new Date().toISOString(), // Added default
-    method: 'Unknown', // Added default
-    verified: false // Added default
-};
+// There is deliberately no fingerprint fallback object here. The previous one wrote the sentence
+// "Error generating hash: Fallback response due to API failure." into `quantumHash` - which a screen
+// then printed in a monospace block as if it were a digest - and asserted `integrityStatus:
+// 'Potential Tampering Detected'`. So an offline machine accused every document of tampering. When the
+// model cannot be reached the answer is `null`: no analysis, no verdict, no invented digest.
 
 
 export const geminiService = {
-    predictCaseOutcome: (sanitizedCase: Case, language: string) => withErrorRecovery(() => predictCaseOutcomeInternal(sanitizedCase, language), fallbackPrediction),
-    analyzeDocuments: (parts: Part[]) => withErrorRecovery(() => analyzeDocumentsInternal(parts), fallbackDocAnalysis),
-    chatWithNyayabot: chatWithNyayabotInternal,
-    generateQuantumFingerprint: (content: string | Part[], language: string) => withErrorRecovery(() => generateQuantumFingerprintInternal(content, language), fallbackFingerprint),
+    // Without a key there is nothing to retry, so short-circuit instead of sleeping through three
+    // backoffs and then reporting a "network error" that never happened.
+    predictCaseOutcome: (sanitizedCase: Case, language: string): Promise<PredictionResult> =>
+        isGeminiConfigured()
+            ? withErrorRecovery(() => predictCaseOutcomeInternal(sanitizedCase, language), fallbackPrediction('unreachable'))
+            : Promise.resolve(fallbackPrediction('unconfigured')),
+    analyzeDocuments: (parts: Part[]): Promise<DocumentAnalysisResult> =>
+        isGeminiConfigured()
+            ? withErrorRecovery(() => analyzeDocumentsInternal(parts), fallbackDocAnalysis('unreachable'))
+            : Promise.resolve(fallbackDocAnalysis('unconfigured')),
+    chatWithNyayabot: async (message: string, ragParts?: Part[], history?: ChatMessage[]) => {
+        if (!isGeminiConfigured()) throw new Error(AI_NOT_CONFIGURED);
+        return chatWithNyayabotInternal(message, ragParts, history);
+    },
+    // `null` means "no analysis was produced". Callers must not turn that into a pass or a failure.
+    generateQuantumFingerprint: (content: string | Part[], language: string): Promise<QuantumFingerprintResult | null> =>
+        isGeminiConfigured()
+            ? withErrorRecovery<QuantumFingerprintResult | null>(() => generateQuantumFingerprintInternal(content, language), null)
+            : Promise.resolve(null),
     transcribeAudio: async (audioPart: Part) => {
-        const response = await ai.models.generateContent({
+        const response = await gemini().models.generateContent({
             model: 'gemini-2.5-pro',
             contents: { parts: [audioPart, { text: "Transcribe this audio recording." }] }
         });
         return response.text || '';
     },
     analyzeArgument: async (argument: string) => {
-        const response = await ai.models.generateContent({
+        const response = await gemini().models.generateContent({
             model: 'gemini-2.5-pro',
             contents: `You are a helpful legal assistant. Analyze the following legal argument in a neutral and objective tone. Do not express personal opinions or excitement. Identify its strengths (if any), weaknesses, potential counterarguments, and provide strategic recommendations for a legal professional. Argument: "${argument}"`,
             config: {
@@ -328,7 +381,7 @@ export const geminiService = {
         }
         promptParts.push({ text: promptText });
 
-        const response = await ai.models.generateContent({
+        const response = await gemini().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts: promptParts }
         });

@@ -9,11 +9,12 @@
  * esbuild already in node_modules, installs a localStorage shim, and exercises the shipped
  * module - the same code path the Evidence Locker and the judge's verifier call.
  *
- * Checks in six groups:
+ * Checks in seven groups:
  *   A zero-knowledge / tamper detection     B persistence, attribution, offline verification
  *   C "post-quantum"                        D the merkleRoot field
  *   E how many ledger copies exist and whether they agree
  *   F whether the Block 3 screens actually mount, are routed, and are free of demo fixtures
+ *   G whether the language-model path degrades when no API key is configured
  *
  * Exit status is the point. A harness that prints FAIL and still returns 0 is how a repo ships
  * a "100% verified" badge for years.
@@ -610,6 +611,112 @@ const main = async () => {
         theatre.length === 0,
         theatre.length ? `still present: ${theatre.join(', ')}`
             : 'The wizard\'s "Download Part A (PDF)" had no handler and there is no PDF writer in the tree; it now downloads the text the s.63 Schedule can actually be read from, and the certificate\'s own digest is anchored so the download can be checked against the journal. The locker\'s verify/certificate buttons used to sleep for a second and then claim success.'
+    );
+
+
+    // -----------------------------------------------------------------------
+    // G. the language-model path. The AI service used to `throw` at module scope when
+    // VITE_API_KEY was absent - and the committed .env carried a placeholder, so every clone on
+    // earth started from a broken import. Group G bundles that module for real, under a stubbed
+    // SDK, and proves the app survives with no key, invents nothing, and says which of the three
+    // states it is in.
+    // -----------------------------------------------------------------------
+    console.log('\n=== G. no API key must degrade the AI screens, not detonate them ===');
+
+    const genaiStub = path.join(bundleDir, 'genai-stub.mjs');
+    fs.writeFileSync(genaiStub, [
+        '// Anything the service tries to do with the real SDK is a bug in the harness, so refuse loudly.',
+        'export class GoogleGenAI {',
+        '    constructor() { throw new Error("harness: the language model must not be reached from these tests"); }',
+        '}',
+        'export const Type = { OBJECT: "OBJECT", STRING: "STRING", ARRAY: "ARRAY" };',
+        'export class GenerateContentResponse {}',
+        'export class Part {}',
+        '',
+    ].join('\n'));
+
+    const bundleWithEnv = (outName, env) => {
+        const outfile = path.join(bundleDir, outName);
+        try {
+            execFileSync(esbuildBin, [
+                'src/features/main/services/geminiService.ts',
+                '--bundle', '--format=esm', '--platform=node', '--external:react',
+                `--alias:@google/genai=${genaiStub}`,
+                `--define:import.meta.env=${JSON.stringify(env)}`,
+                `--outfile=${outfile}`,
+            ], { cwd: repoRoot, stdio: 'pipe' });
+        } catch (err) {
+            console.error(`esbuild could not bundle the AI service under ${JSON.stringify(env)}:\n${err.stderr?.toString() ?? err.message}`);
+            process.exit(2);
+        }
+        return outfile;
+    };
+
+    // (1) empty key. The import itself is the regression: an exception here fails the claim.
+    const noKey = await freshImport(bundleWithEnv('ai-no-key.mjs', { VITE_API_KEY: '' }));
+    check(
+        'A clone with no key can still import the AI service',
+        typeof noKey.isGeminiConfigured === 'function' && noKey.isGeminiConfigured() === false,
+        'The module used to run `throw new Error("API_KEY environment variable is not set.")` at load time, ' +
+        'which took down every screen that imported it - five routed ones, including the citizen intake form. ' +
+        'The client is now built lazily on first use and `isGeminiConfigured()` is the public answer.'
+    );
+
+    const fingerprint = await noKey.geminiService.generateQuantumFingerprint('charge sheet body', 'en');
+    check(
+        'No analysis returns no analysis - not a fabricated digest, not a tampering verdict',
+        fingerprint === null,
+        'The old fallback object put the sentence "Error generating hash: Fallback response due to API failure." ' +
+        'into `quantumHash` for a monospace block to render as a fingerprint, and asserted ' +
+        '`integrityStatus: "Potential Tampering Detected"`. Offline, that accused every document of tampering.'
+    );
+
+    const prediction = await noKey.geminiService.predictCaseOutcome({ id: 'CASE-G' }, 'en');
+    check(
+        'The fallback states the reason that is actually true, without pretending a request failed',
+        /not configured/.test(prediction.rationale) && prediction.contributingFactors.join(' ').includes('VITE_API_KEY'),
+        `"${prediction.rationale}" / ${JSON.stringify(prediction.contributingFactors)} - it used to report a network error ` +
+        'for a call that was never made, after three backoffs (7 seconds of waiting for a failure that was known up front).'
+    );
+
+    const placeholder = await freshImport(bundleWithEnv('ai-placeholder.mjs', { VITE_API_KEY: 'YOUR_KEY_HERE' }));
+    check(
+        'A placeholder key is treated as no key',
+        placeholder.isGeminiConfigured() === false,
+        'This is the state the repository itself shipped in: a .env with YOUR_KEY_HERE in it. Accepting it would send a ' +
+        'doomed request on every click and then blame the network for the 400 that came back.'
+    );
+
+    const configured = await freshImport(bundleWithEnv('ai-configured.mjs', { VITE_API_KEY: `AIza${'x'.repeat(35)}` }));
+    check(
+        'A real-shaped key is recognised as configured (no request is made here)',
+        configured.isGeminiConfigured() === true,
+        'Google AI-Studio keys are `AIza` plus 35 characters. The check is shape-only, deliberately: validating a key ' +
+        'means calling the API, and a test suite must not make network calls.'
+    );
+
+    const walkTs = (dir, out = []) => {
+        for (const entry of fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
+            const rel = `${dir}/${entry.name}`;
+            if (entry.isDirectory()) walkTs(rel, out);
+            else if (/\.(ts|tsx)$/.test(entry.name)) out.push(rel);
+        }
+        return out;
+    };
+    // Deliberately NOT codeOnly() here: a suppression directive is a comment, so stripping comments
+    // would make this claim unfalsifiable - it would report "clean" forever, which is the same failure
+    // as grepping prose, pointed the other way. The cost is that prose in src/ must not spell the
+    // directive either; say "suppression" instead.
+    const DIRECTIVE = /@ts-(ignore|expect-error|nocheck)/;
+    const suppressions = walkTs('src').filter((f) => DIRECTIVE.test(fs.readFileSync(path.join(repoRoot, f), 'utf8')));
+    check(
+        'No compiler suppressions anywhere in src/',
+        suppressions.length === 0,
+        suppressions.length ? `found in: ${suppressions.join(', ')}` :
+        'Three were removed, and all three were hiding something: the one in the chat call claimed the SDK types were ' +
+        'stale while `systemInstruction` and `tools` sat outside `config`, where the SDK ignores them - so the topic ' +
+        'guardrail had never been applied. The two in the NPS counter were a `useRef(null)` with no type argument. ' +
+        'The scan strips comments, so this file mentioning the word cannot make the claim pass.'
     );
 
     console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);

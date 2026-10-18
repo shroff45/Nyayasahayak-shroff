@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { geminiService } from '../services/geminiService';
+import { geminiService, isGeminiConfigured, AI_NOT_CONFIGURED } from '../services/geminiService';
 import { legalParser } from '../services/legalParser';
 import { DocumentAnalysisResult, HistoryItem, QuantumFingerprintResult } from '../types';
 import { fileToBase64 } from '../lib/utils';
@@ -105,6 +105,11 @@ const DocumentIntegrityView: React.FC<{ t: (key: string) => string; logActivity:
 
     return (
         <div className="grid lg:grid-cols-2 gap-8 p-4">
+            {!isGeminiConfigured() && (
+                <p role="status" className="lg:col-span-2 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+                    {AI_NOT_CONFIGURED}
+                </p>
+            )}
             {/* Generate Column */}
             <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-gray-200 dark:border-gray-700 flex flex-col shadow-xl transition-all hover:shadow-2xl">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center justify-center gap-2">

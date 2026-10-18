@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Case, QuantumFingerprintResult, HistoryItem } from '../types';
-import { geminiService } from '../services/geminiService';
+import { geminiService, isGeminiConfigured, AI_NOT_CONFIGURED } from '../services/geminiService';
 import Spinner from './common/Spinner';
 import { gsap } from 'gsap';
 import AnimatedPageWrapper from './common/AnimatedPageWrapper';
@@ -116,6 +116,11 @@ const QuantumFingerprinting: React.FC<QuantumFingerprintingProps> = ({ t, select
 
     return (
         <AnimatedPageWrapper>
+            {!isGeminiConfigured() && (
+                <p role="status" className="mx-4 mt-4 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+                    {AI_NOT_CONFIGURED}
+                </p>
+            )}
             <div className="w-full h-full flex items-center justify-center">
                 <div className="max-w-3xl w-full bg-white/60 dark:bg-gray-800/60 backdrop-blur-md rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700/50 overflow-hidden transition-colors">
                     <h2 className="text-2xl font-bold p-4 text-center text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700/50">{t('tab_quantum_fingerprinting')}</h2>
