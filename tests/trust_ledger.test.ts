@@ -27,16 +27,27 @@ import {
 } from '../src/core/trust/keys.ts';
 import { verifyInclusionProof } from '../src/core/trust/merkle.ts';
 import { sha256Hex } from '../src/core/trust/sha256.ts';
-import type { JournalMeta, WebStorage } from '../src/core/trust/store.ts';
+import type {
+    IDBDatabaseLike,
+    IDBLike,
+    IDBObjectStoreLike,
+    IDBRequestLike,
+    JournalMeta,
+    WebStorage,
+} from '../src/core/trust/store.ts';
+import { defaultDriver, indexedDbDriver } from '../src/core/trust/index.ts';
 
 const ZERO = '0'.repeat(64);
 
 /** Minimal stand-in for `window.localStorage` - the driver is written against this, not against a browser. */
-const fakeStorage = (): WebStorage & { map: Map<string, string>; failNextWrite?: Error } => {
+const fakeStorage = (): WebStorage & { map: Map<string, string>; failNextWrite?: Error; forgetWrites?: boolean } => {
     const map = new Map<string, string>();
     const holder: any = {
         map,
-        getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+        // `forgetWrites` is Safari-in-private-mode behaviour: `setItem` neither throws nor sticks.
+        // It exists because "the write did not throw" is the weak claim, and a persistence flag
+        // built on it is the defect D6 removes.
+        getItem: (k: string) => (holder.forgetWrites ? null : (map.has(k) ? map.get(k)! : null)),
         setItem: (k: string, v: string) => {
             if (holder.failNextWrite) {
                 const err = holder.failNextWrite;
@@ -380,4 +391,222 @@ test('a payload with an explicitly-undefined field still verifies after a reload
     assert.equal(verdict.ok, true, verdict.reason);
     const stored = JSON.parse(storage.getItem('nyaya:ledger:v1:records')!)[0];
     assert.equal('badgeNumber' in stored.data, false, 'the key is gone from storage, as JSON does');
+});
+
+
+// ---------------------------------------------------------------------------
+// D6: `persisted` is an answer to a question, not a description of which APIs exist.
+//
+// The flag used to be `typeof storage !== 'undefined'`, and the IndexedDB tier was offered but
+// never chosen. Both halves were unproven claims about durability - the same category as
+// "verified secure" on a button, which is why they are tested the same way: by building the
+// refusal and checking that the app notices.
+
+type FakeStores = Map<string, Map<number, unknown>>;
+
+/**
+ * A fake `indexedDB` with the three ways a real one refuses: `open` errors, the database already
+ * exists at version 1 without the probe store (so a readwrite transaction on it is a NotFoundError),
+ * or everything works. The last one is checked structurally too - the probe must leave its own store
+ * empty, or "proving durability" would be a write that litters the thing it certifies.
+ */
+const fakeIdb = (opts: { failOpen?: boolean; preexistingWithoutProbeStore?: boolean } = {}) => {
+    const dbs = new Map<string, FakeStores>();
+    // A database that already exists at the requested version never fires `onupgradeneeded`, so an
+    // install from before the probe store existed is simulated by pre-seeding it - not by refusing
+    // the store later, which would let the upgrade path create the store and answer the probe
+    // honestly for a situation it does not model. The name is the driver's default.
+    if (opts.preexistingWithoutProbeStore) dbs.set('nyaya-ledger', new Map([['records', new Map<number, unknown>()]]));
+
+    const request = <T,>(produce: () => T): IDBRequestLike => {
+        const req: IDBRequestLike = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+        // Deferred by a microtask because the driver assigns `onsuccess` after calling - a
+        // synchronous callback would be delivered to nobody.
+        queueMicrotask(() => {
+            try {
+                req.result = produce();
+                req.onsuccess?.({ target: { result: req.result } });
+            } catch (error) {
+                req.onerror?.({ target: { error } });
+            }
+        });
+        return req;
+    };
+
+    const objectStore = (data: Map<number, unknown>): IDBObjectStoreLike => ({
+        put: (value, key) => request(() => { data.set(key ?? data.size, value); }),
+        get: (key) => request(() => data.get(key)),
+        getAll: () => request(() => [...data.values()]),
+        clear: () => request(() => { data.clear(); }),
+        delete: (key) => request(() => { data.delete(key); }),
+    });
+
+    const database = (stores: FakeStores): IDBDatabaseLike => ({
+        objectStoreNames: { contains: (name: string) => stores.has(name) },
+        createObjectStore: (name: string) => { stores.set(name, new Map()); return {}; },
+        transaction: (name: string) => {
+            const data = stores.get(name);
+            if (!data) throw new Error(`NotFoundError: no object store named ${name}`);
+            return { objectStore: () => objectStore(data) };
+        },
+    });
+
+    const idb: IDBLike & { dbs: Map<string, FakeStores> } = {
+        dbs,
+        open: (name: string) => {
+            const req: IDBRequestLike = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+            queueMicrotask(() => {
+                if (opts.failOpen) {
+                    req.onerror?.({ target: { error: new Error('open blocked by policy') } });
+                    return;
+                }
+                let stores = dbs.get(name);
+                const needsUpgrade = stores === undefined;
+                if (!stores) {
+                    stores = new Map<string, Map<number, unknown>>();
+                    dbs.set(name, stores);
+                }
+                req.result = database(stores);
+                // A database that already exists at the requested version never fires this handler,
+                // which is exactly how an install from before the probe store existed stays without one.
+                if (needsUpgrade) req.onupgradeneeded?.({});
+                req.onsuccess?.({ target: { result: req.result } });
+            });
+            return req;
+        },
+    };
+    return idb;
+};
+
+const withGlobals = async <T,>(
+    overrides: { localStorage?: WebStorage; indexedDB?: IDBLike },
+    run: () => Promise<T>
+): Promise<T> => {
+    const had = {
+        localStorage: Object.getOwnPropertyDescriptor(globalThis, 'localStorage'),
+        indexedDB: Object.getOwnPropertyDescriptor(globalThis, 'indexedDB'),
+    };
+    const put = (key: 'localStorage' | 'indexedDB') => {
+        const value = overrides[key];
+        if (value === undefined) delete (globalThis as Record<string, unknown>)[key];
+        else Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+    };
+    put('localStorage');
+    put('indexedDB');
+    try {
+        return await run();
+    } finally {
+        const restore = (key: 'localStorage' | 'indexedDB', desc: PropertyDescriptor | undefined) => {
+            if (desc) Object.defineProperty(globalThis, key, desc);
+            else delete (globalThis as Record<string, unknown>)[key];
+        };
+        restore('localStorage', had.localStorage);
+        restore('indexedDB', had.indexedDB);
+    }
+};
+
+test('the memory driver calls its own store unpersisted, rather than unproven', async () => {
+    assert.equal(await memoryDriver().probe(), false);
+});
+
+test('a localStorage that accepts writes and then forgets them fails the probe', async () => {
+    const working = fakeStorage();
+    assert.equal(await localStorageDriver(working).probe(), true, 'the ordinary case must stay true');
+
+    const forgetting = fakeStorage();
+    forgetting.forgetWrites = true;
+    assert.equal(
+        await localStorageDriver(forgetting).probe(), false,
+        'Safari private mode: setItem never throws and nothing survives - the weak claim was "it did not throw"'
+    );
+
+    const quota = fakeStorage();
+    quota.failNextWrite = new Error('QuotaExceededError');
+    assert.equal(await localStorageDriver(quota).probe(), false, 'a throwing store is refused, not fatal at boot');
+});
+
+test('the probe leaves nothing behind in its own store', async () => {
+    const idb = fakeIdb();
+    const driver = indexedDbDriver(idb);
+    assert.equal(await driver.probe(), true);
+    const stores = idb.dbs.get('nyaya-ledger');
+    assert.ok(stores, 'the database was created');
+    const probe = stores!.get('persistence-probe');
+    assert.ok(probe, 'the probe store exists beside the journal, not inside it');
+    assert.equal(probe!.size, 0, 'a marker left behind would let a stale value vouch for a store that just refused a write');
+    assert.equal(stores!.get('records')!.size, 0, 'and the journal itself was never touched by the probe');
+});
+
+test('IndexedDB is chosen when it can answer for itself, and refused when it cannot', async () => {
+    const working = fakeIdb();
+    const chosen = await withGlobals({ localStorage: fakeStorage(), indexedDB: working }, () => defaultDriver());
+    assert.equal(chosen.driver.name, 'indexedDB');
+    assert.equal(chosen.persisted, true);
+
+    const blocked = await withGlobals({ localStorage: fakeStorage(), indexedDB: fakeIdb({ failOpen: true }) }, () => defaultDriver());
+    assert.equal(blocked.driver.name, 'localStorage', 'a refused open falls through instead of failing the boot');
+    assert.equal(blocked.persisted, true);
+
+    const legacy = await withGlobals(
+        { localStorage: fakeStorage(), indexedDB: fakeIdb({ preexistingWithoutProbeStore: true }) },
+        () => defaultDriver()
+    );
+    assert.equal(legacy.driver.name, 'localStorage', 'a database from before the probe store existed is not trusted on read-only evidence');
+});
+
+test('a device whose journal is already in localStorage is not moved onto an empty store', async () => {
+    // The preference order is IndexedDB first, but preference loses to history: switching stores
+    // mid-life would leave every record anchored yesterday out of reach while the chain still
+    // looked healthy from record #1 onward.
+    const local = fakeStorage();
+    local.setItem('nyaya:ledger:v1:meta', JSON.stringify({
+        version: 1, storeId: 'from-before-d6', headDigest: 'a'.repeat(64), recordCount: 7,
+    }));
+    const picked = await withGlobals({ localStorage: local, indexedDB: fakeIdb() }, () => defaultDriver());
+    assert.equal(picked.driver.name, 'localStorage');
+    assert.equal(picked.persisted, true);
+});
+
+test('with no store that can prove itself, the ledger degrades and says so', async () => {
+    const outcome = await withGlobals({ indexedDB: fakeIdb({ failOpen: true }) }, () => defaultDriver());
+    assert.equal(outcome.driver.name, 'memory');
+    assert.equal(outcome.persisted, false);
+});
+
+test('an explicitly supplied driver is probed for itself, not for the browser around it', async () => {
+    // Before D6 this pair was inverted: the environment was asked, so `memoryDriver()` inside a
+    // browser reported `persisted: true` and the citizen was told their complaint was on disk.
+    const workingStorage = fakeStorage();
+    const { identity, trusted } = await freshIdentity();
+    const ledger = await withGlobals({ localStorage: workingStorage }, async () => {
+        const created = await createLedger({ driver: memoryDriver(), identity, trustedAuthorities: trusted });
+        const status = await created.status();
+        return status;
+    });
+    assert.equal(ledger.persisted, false, 'the flag describes the store in use, not the store available');
+
+    const viaDefault = await withGlobals({ localStorage: workingStorage }, async () => {
+        const created = await createLedger({ identity, trustedAuthorities: trusted });
+        return await created.status();
+    });
+    assert.equal(viaDefault.persisted, true, 'and with no driver supplied it does describe the chosen store');
+    assert.equal(viaDefault.storeName, 'localStorage');
+});
+
+test('a journal written through IndexedDB survives the reload that ends the session', async () => {
+    const idb = fakeIdb();
+    const { identity, trusted } = await freshIdentity();
+    const ledger = await seed(indexedDbDriver(idb), identity, trusted, 2);
+    const first = await ledger.status();
+    assert.equal(first.persisted, true);
+    assert.equal(first.records, 2);
+
+    // "Reload" in this fake is a new driver over the same databases map, which is the same thing a
+    // new page does over the same origin.
+    const reopened = indexedDbDriver(idb);
+    const records = await reopened.readAll();
+    assert.equal(records.length, 2);
+    assert.equal(records.map((r) => r.index).join(','), '1,2');
+    const meta = await reopened.readMeta();
+    assert.equal(meta!.recordCount, 2, 'and the meta that keeps the chain monotonic came back with it');
 });

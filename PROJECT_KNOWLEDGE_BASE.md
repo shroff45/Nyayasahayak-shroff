@@ -296,7 +296,7 @@ Repo claims to fix against the bare Act: "60 days under s.193" is wrong — s.19
 git merge-base --is-ancestor <last-known-good> HEAD   # 0, or you are on the wrong base
 npm run typecheck            # must be 0 errors. If the shim is not executable: node node_modules/typescript/bin/tsc --noEmit
 npm test                     # `node --experimental-strip-types --test tests/*.test.ts` + `node tools/statute_tests.mjs`. Today: 53 node tests across 5 files (trust primitives, ledger, custody, the s.63 certificate document, and since D20 the citizen-intake round trip) + 14 statute tests. Never bare `node --test tests/*.test.ts` — it needs the strip-types flag.
-node tools/ledger_repro.cjs  # the claim harness: groups A–H, 27 claims. Must exit 0, and the count in its summary line is asserted by docs/TRUST_MODEL.md §7 and by the About page's fourth number, so a claim quietly dropped makes two other things fail.
+node tools/ledger_repro.cjs  # the claim harness: groups A–H, 28 claims. Must exit 0, and the count in its summary line is asserted by docs/TRUST_MODEL.md §7 and by the About page's fourth number, so a claim quietly dropped makes two other things fail.
 set -o pipefail && npm run build | tee /tmp/build.log
 node tools/check_bundle_size.mjs /tmp/build.log   # 600 kB per asset, fails closed, ANSI-stripped
 ```
@@ -313,7 +313,7 @@ Rules that have kept this project from lying to itself: `tools/ledger_repro.cjs`
 | D3 | **closed** (`e3642d9d`). Was: no key ⇒ intake/bot routes white-screen — the default state of every clone, since the committed `.env` held a placeholder. | `geminiService.ts:6-9` | **high — upgraded**, this is what a reviewer sees first | 4(e)
 | D4 | **closed** (`e3642d9d`): the fabricated fallback is gone and absent analysis is `null`. The mechanism it fell back from is now D18. | `geminiService.ts:259` | high | 4(e)
 | D5 | **closed** (`174d9484`): live strings re-labelled, and harness group H fails the build if such a claim returns to a reachable file. | §7 | high | 4(e)
-| D6 | ledger defaults to a silently-volatile store | `store.ts` `defaultDriver()` | high | 4(new) |
+| D6 | **closed** (PR #6): `persisted` is earned, not assumed. `defaultDriver()` used to probe localStorage by writing a key it never read back — a probe that passes in Safari private mode, where every write is discarded at unload — while `indexedDbDriver` sat implemented and unreachable. Each driver now owns `probe()` (write, read-back, cleanup); `defaultDriver` is async and takes the first store that answers for itself, IndexedDB gets a separate `persistence-probe` object store so the sentinel can never be swept into the journal, a device whose journal already lives in localStorage is not moved onto an empty store, and a driver passed to `createLedger` is probed for itself instead of inheriting the browser's answer. Pinned by harness claim 28, which imports the real selector and drives it with fakes rather than grepping it. | `store.ts` `defaultDriver()`, `ledger.ts` `createLedger` | high | 4(new) |
 | D7 | 4 competing `Case` models + adapter; journal rows already heterogeneous | §8, `LedgerSubject` | high | 4(a) |
 | D8 | 98 unreachable files / 19,611 lines (was 112 / 21,784 before D9, D18 and Q9; `node tools/resolve-importers.mjs` reproduces it) | §3 D3 | medium | 4(purge) |
 | D9 | **closed** (`d2d26bb2`): route, wrapper, lazy import and both component copies deleted. | `App.tsx:318` | medium | 4(e)
@@ -339,6 +339,7 @@ chip "How do I get legal aid?", which is precisely the legal question the instru
 first thing a visitor is invited to ask is the thing the bot will not answer. That chip is left in place
 deliberately - deleting it would be the fix that assumes the guardrail is correct, which is your call
 and not a merge-blocker. | `geminiService.ts:187`, `Nyayabot.tsx:590` | medium | decide |
+| D26 | **the store that wins the journal is not the store that holds the key.** After D6, a browser offering IndexedDB but no localStorage has a provably durable journal and still cannot boot: `akhandLedger.initialise` throws before `createLedger` is reached, because `webStorageIdentityVault` and the pinned-authority list are both written against `WebStorage`. It fails safe — an error on screen, never a false `persisted` — so this is a capability gap, not a lie, and `lockPrivateKey()` — which is the only thing that reaches the `non-extractable-in-indexeddb` tier, and is called by nothing in the app — stays a library function with a doc string for a caller. Closing it means deciding where a signing key may live, which is D12's question, so it waits for you. | `src/services/akhandLedger.ts:82-89`, `core/trust/keys.ts` `webStorageIdentityVault` | medium | decide |
 
 ## 14. What I need from you (every answer changes what I write first)
 

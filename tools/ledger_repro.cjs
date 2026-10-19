@@ -414,6 +414,151 @@ const main = async () => {
         fieldHonesty.detail + ' Anchoring on every write keeps the unprotected window at one record in a browser-only build.'
     );
 
+    // --------------------------------------------------------------------------- D6 / claim 28
+    //
+    // `persisted` used to mean `typeof window.localStorage !== 'undefined'`, and the IndexedDB tier
+    // existed in the file but was never chosen. Both halves are behavioural, so this claim runs the
+    // real selector instead of reading its source: the old probe wrote a value and never asked for it
+    // back, and no grep can tell that apart from a probe that does.
+    const trustStore = await freshImport(bundle('src/core/trust/store.ts', 'trust-store.mjs'));
+
+    const freshLocal = (seedMeta) => {
+        const map = new Map();
+        if (seedMeta) map.set('nyaya:ledger:v1:meta', JSON.stringify(seedMeta));
+        return {
+            getItem: (k) => (map.has(k) ? map.get(k) : null),
+            setItem: (k, v) => { map.set(k, v); },
+            removeItem: (k) => { map.delete(k); },
+            _map: map,
+        };
+    };
+    // Writes accepted, nothing kept, no error raised. Every browser in private mode, and the exact
+    // situation the receipt on the citizen's screen used to describe as "Saved to this device".
+    const lyingLocal = { getItem: () => null, setItem: () => { }, removeItem: () => { } };
+
+    const idbStub = (mode) => {
+        const dbs = new Map();
+        if (mode === 'legacy') dbs.set('nyaya-ledger', new Map([['records', new Map()]]));
+        const request = (produce) => {
+            const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+            queueMicrotask(() => {
+                try {
+                    req.result = produce();
+                    if (req.onsuccess) req.onsuccess({ target: { result: req.result } });
+                } catch (error) {
+                    if (req.onerror) req.onerror({ target: { error } });
+                }
+            });
+            return req;
+        };
+        const objectStore = (data) => ({
+            put: (value, key) => request(() => { data.set(key === undefined ? data.size : key, value); }),
+            get: (key) => request(() => data.get(key)),
+            getAll: () => request(() => Array.from(data.values())),
+            clear: () => request(() => { data.clear(); }),
+            delete: (key) => request(() => { data.delete(key); }),
+        });
+        const database = (stores) => ({
+            objectStoreNames: { contains: (name) => stores.has(name) },
+            createObjectStore: (name) => { stores.set(name, new Map()); return {}; },
+            transaction: (name) => {
+                const data = stores.get(name);
+                if (!data) throw new Error(`NotFoundError: no object store named ${name}`);
+                return { objectStore: () => objectStore(data) };
+            },
+        });
+        return {
+            dbs,
+            open: (name) => {
+                const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+                queueMicrotask(() => {
+                    if (mode === 'blocked') {
+                        if (req.onerror) req.onerror({ target: { error: new Error('blocked by policy') } });
+                        return;
+                    }
+                    let stores = dbs.get(name);
+                    const needsUpgrade = stores === undefined;
+                    if (!stores) { stores = new Map(); dbs.set(name, stores); }
+                    req.result = database(stores);
+                    if (needsUpgrade) {
+                        if (req.onupgradeneeded) req.onupgradeneeded({});
+                    }
+                    if (req.onsuccess) req.onsuccess({ target: { result: req.result } });
+                });
+                return req;
+            },
+        };
+    };
+
+    const driverChoice = await (async () => {
+        const keep = {
+            localStorage: Object.getOwnPropertyDescriptor(globalThis, 'localStorage'),
+            indexedDB: Object.getOwnPropertyDescriptor(globalThis, 'indexedDB'),
+        };
+        const set = (key, value) => {
+            if (value === undefined) delete globalThis[key];
+            else Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+        };
+        const restore = () => {
+            for (const key of ['localStorage', 'indexedDB']) {
+                if (keep[key]) Object.defineProperty(globalThis, key, keep[key]);
+                else delete globalThis[key];
+            }
+        };
+        const run = async (localStorage, indexedDB) => {
+            set('localStorage', localStorage);
+            set('indexedDB', indexedDB);
+            return await trustStore.defaultDriver();
+        };
+        try {
+            const privateMode = await run(lyingLocal, undefined);
+            const ordinary = await run(freshLocal(), idbStub('blocked'));
+            const bothAvailable = freshLocal();
+            const workingIdb = idbStub('default');
+            const preferred = await run(bothAvailable, workingIdb);
+            const withHistory = await run(
+                freshLocal({ version: 1, storeId: 'before-d6', headDigest: 'a'.repeat(64), recordCount: 7 }),
+                idbStub('default')
+            );
+            const legacyDb = await run(freshLocal(), idbStub('legacy'));
+            // Optional chaining everywhere below on purpose: a build that never constructs the
+            // IndexedDB driver has no database to inspect, and this claim must answer that with
+            // `CLAIM FAILS` plus a reason, not by taking the harness down with a TypeError.
+            const idbDbs = workingIdb.dbs.get('nyaya-ledger');
+            const probeStore = idbDbs ? idbDbs.get('persistence-probe') : undefined;
+            const journalStore = idbDbs ? idbDbs.get('records') : undefined;
+            return {
+                ok: privateMode.driver.name === 'memory' && privateMode.persisted === false
+                    && ordinary.driver.name === 'localStorage' && ordinary.persisted === true
+                    && preferred.driver.name === 'indexedDB' && preferred.persisted === true
+                    && withHistory.driver.name === 'localStorage'
+                    && legacyDb.driver.name === 'localStorage'
+                    && probeStore !== undefined && probeStore.size === 0
+                    && journalStore !== undefined && journalStore.size === 0,
+                detail: `private-mode storage -> ${privateMode.driver.name}/${privateMode.persisted}; `
+                    + `IDB refusing to open -> ${ordinary.driver.name}/${ordinary.persisted}; `
+                    + `both available -> ${preferred.driver.name}/${preferred.persisted}; `
+                    + `journal already in localStorage -> ${withHistory.driver.name}; `
+                    + `database predating the probe store -> ${legacyDb.driver.name}; `
+                    + `probe store left with ${probeStore ? probeStore.size : 'no store'} marker(s), `
+                    + `journal store ${journalStore ? `untouched (${journalStore.size} record(s))` : 'never opened'}`,
+            };
+        } finally {
+            // The harness's own storage shim has to come back exactly as it was: every claim after
+            // this one reads the journal the earlier claims wrote through it.
+            restore();
+        }
+    })();
+    check(
+        'The persistence flag is earned by a write and a read-back, in the store it describes',
+        driverChoice.ok,
+        driverChoice.detail +
+        ' | A store that accepts writes and discards them (Safari private mode) must land on memory/false, ' +
+        'IndexedDB is preferred only when it proves itself, and a device with history in localStorage is never ' +
+        'moved onto an empty store. The claim also fails if the probe leaves a marker behind or writes into the ' +
+        'journal - proving durability must not cost a record.'
+    );
+
     console.log('\n=== E. Consistency of the ledger copies that survive in the tree ===');
 
     const ledgerFiles = execSync(`find src -name 'akhandLedger.ts'`, { cwd: repoRoot }).toString().trim().split('\n').filter(Boolean);

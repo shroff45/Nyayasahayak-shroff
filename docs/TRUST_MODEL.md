@@ -95,6 +95,46 @@ signature depends on how the key is held:
 `lockPrivateKey()` upgrades the first tier when IndexedDB is present. A quota failure throws — the
 write is *not* silently downgraded to memory, because "persisted" is a claim the UI makes.
 
+### What `persisted` means, and how it is earned
+
+`Ledger.status().persisted` is not "the browser has localStorage". It is the result of asking the
+store a question, once, before the ledger is built:
+
+```ts
+storage.setItem(probeKey, token);          // 1. write
+const readBack = storage.getItem(probeKey); // 2. read
+return readBack === token && storage.getItem(probeKey) === null; // 3. and clean up after yourself
+```
+
+Three consequences worth stating, because each one is a defect this replaced:
+
+- **A store that accepts writes and discards them is rejected.** Safari in private mode completes
+  every `setItem` without throwing and loses all of it at unload; a kiosk profile with storage
+  disabled by policy refuses the write outright. Both now end up on `memoryDriver` with
+  `persisted: false`, and the citizen's receipt says *"Session only — will not survive page
+  reload"* instead of *"Saved to this device"*. The old probe checked only that nothing threw.
+- **IndexedDB is preferred, but only if it proves itself, and never at the cost of history.** It
+  gets its own `persistence-probe` object store: a sentinel parked in `records` would be swept up
+  by `readAll` (a bare `getAll()`) and would break the rule that `record.index` must equal
+  `meta.recordCount + 1` — proving durability would have cost a record. If `open()` is refused, or
+  the probe store does not exist because the database was created before it did, the probe resolves
+  `false` and the ledger moves on to the next store. And if localStorage already holds this device's
+  journal, localStorage keeps it: silently starting a new chain on an empty store, one the user's
+  exhibits have never been written to, is worse than a smaller quota.
+- **The flag describes the store in use, not the environment around it.** A caller that passes
+  `driver:` to `createLedger` gets that driver's probe. Before this, `createLedger({ driver:
+  memoryDriver() })` in a desktop browser reported `persisted: true` — a truthful-looking field
+  measured against the wrong subject, which is how the tests and the app could disagree without any
+  type error appearing.
+
+What a probe does **not** buy: a promise that the bytes survive a browser crash, an OS-level disk
+failure, or a user who clears site data five minutes later; and no protection against a page that
+can be scripted (item 8 above — same origin, same ability to `clear()`). It answers exactly one
+question, "did the write land", because that is the only question the receipt on the citizen's
+screen claims to answer. The E2E journey asserts `persisted`; it does not assert survival across a
+reload, and that asymmetry is deliberate — a probe measured in the same session cannot be the proof
+of a different session.
+
 ## 5. Threat model summary
 
 | Adversary | Outcome |
@@ -193,10 +233,11 @@ a document is a promise and a grep is not a gate.
 Re-run the proof:
 
 ```bash
-node tools/ledger_repro.cjs          # 27 claims, exit non-zero if any fails
-npm test                             # 53 tests (trust primitives, ledger, custody, the s.63
-                                     # certificate document, the citizen intake's round trip
-                                     # through the real façade) + 14 statutory tests
+node tools/ledger_repro.cjs          # 28 claims, exit non-zero if any fails
+npm test                             # 61 tests (trust primitives, ledger, custody, the s.63
+                                     # certificate document, the persistence probe, the citizen
+                                     # intake's round trip through the real façade) + 14 statutory
+                                     # tests
 npx playwright test                  # one chained journey in a real browser, against the build
 ```
 
