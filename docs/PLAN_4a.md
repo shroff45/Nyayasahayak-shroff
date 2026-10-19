@@ -62,6 +62,7 @@ And after D28 (PR #9), same command:
 | unreachable | 34 (4,206 lines, **10.4 %** of `src/`) |
 | unresolved first-party specifiers | 0 |
 | `src/features/main/` | 32 files tracked, **all 32 live**: the directory left the census |
+| after D29 | 151 files (39196 lines) / 123 reachable / 28 unreachable (3159 lines, 8.1 % of `src/`) — and `reachable` fell to 123, because D29 deleted a *live* screen rather than a dead file |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -75,7 +76,7 @@ this repository hardcodes it.
 
 | file | shape | importers | live | naming `Case` | live namers |
 |---|---|---|---|---|---|
-| `src/types.ts` | **golden** — 19 fields, several required | 10 | 5 | 6 | 3 |
+| `src/types.ts` | **golden** — 19 fields, several required | 9 | 4 | 6 | 3 |
 | `src/core/types.ts` | strict subset, missing 6 golden fields (4 required: `adjournmentsCount`, `incidentDate`, `isZeroFir`, `applicableLaw`; 2 optional: `judgeId?`, `zeroFirTransferStatus?`) | 7 | **0** | 3 | 0 |
 | `src/features/main/types.ts` | legacy intake — `caseNumber`, `petitioner`, `invokedActs`, `title`, `complexityScore`, `pii` | 12 | **12** | 8 | **8** ← all live, 0 dead namers |
 
@@ -107,7 +108,9 @@ after the purge deleted the subtree. A directory-based listing missed 2 of the 1
 directories whose *other* files were live - which is exactly why the census is taken with
 `--model` and not with `grep -r`.
 
-The 6 that survive are the entire scope of this block:
+The 6 that survive are the entire scope of this block. Re-measured after D29: the set did not shrink, but
+`src/components/JudgeDashboard.tsx` lost the fabricated panel it was rendering (197 -> 195 lines) and the
+golden model lost a live importer, which is why its row above now reads 9 importers / 4 live:
 
 ```
 src/components/CaseDetailsPanel.tsx
@@ -122,7 +125,10 @@ src/personas/judge/components/DraftJudgmentPanel.tsx
 
 1. **The golden shape is consumed differently, never edited.** `src/types.ts`'s `Case` keeps its
    fields. That constraint is what keeps two dead golden namers (`components/CaseDetailsPanel.tsx`,
-   `components/CaseQueue.tsx`) green while everything around them moves.
+   `components/CaseQueue.tsx`) green while everything around them moves. D29 left one more thing here on
+   purpose: golden `AdjournmentRisk` is now exported to nobody, because the screen that read it was
+   fabricated and was deleted rather than retyped. An unused *type* export is not a `Case` field, so it is
+   fair to delete in this block - but the commit message has to say the reason is a defect, not a tidy-up.
 2. **A type edit and the death of its dead namers are one commit.** Never two. `tsc` is the whole
    reason, and CI runs `tsc`.
 3. **`legacyCaseAdapter.ts` is 4(a)'s file, not anyone else's.** It has **3** importers: 2 live

@@ -43,7 +43,6 @@ const About = React.lazy(() => import('./features/main/components/About'));
 
 // Judge-specific Components
 const DraftJudgmentPanel = React.lazy(() => import('./components/DraftJudgmentPanel'));
-const AdjournmentRiskPanel = React.lazy(() => import('./components/AdjournmentRiskPanel'));
 const NyayaChitra = React.lazy(() => import('./components/NyayaChitra'));
 
 // Citizen-specific Components. Voice filing is a mode inside the intake form itself - see the
@@ -302,17 +301,12 @@ const DraftJudgmentWrapper: React.FC = () => {
     );
 };
 
-const AdjournmentRiskWrapper: React.FC = () => {
-    const [language] = useState<Language>('en');
-    const { t } = useLocalization(language);
-
-    return (
-        <React.Suspense fallback={<LoadingFallback />}>
-            <AdjournmentRiskPanel t={t} lawyerId="L001" />
-        </React.Suspense>
-    );
-};
-
+/* D29: /judge/risk rendered AdjournmentRiskPanel with a hardcoded lawyerId="L001", and that
+   component's LAWYER_STATS object invented five named advocates with adjournment rates, case counts
+   and predicted delays. A screen cannot be labelled its way out of that - the numbers had no source -
+   so the panel, the wrapper and the route are deleted. The URL redirects to the board for the same
+   reason /judge/dashboard does: deleting a route people may have bookmarked is a worse outcome than
+   pointing it at the thing that replaced it. */
 const NyayaChitraWrapper: React.FC = () => {
     const [language] = useState<Language>('en');
 
@@ -458,7 +452,7 @@ const App: React.FC = () => {
                                     is deleted with the subtree; the URL outlived the screen, so it redirects to the
                                     judge board the same way /judge/home does. */}
                                 <Route path="dashboard" element={<Navigate to="/judge/board" replace />} />
-                                <Route path="risk" element={<AdjournmentRiskWrapper />} />
+                                <Route path="risk" element={<Navigate to="/judge/board" replace />} />
                                 <Route path="mapper" element={<CaseMapperWrapper />} />
                                 <Route path="timeline" element={<JusticeTimelineWrapper />} />
                                 <Route path="evidence" element={<DocumentAnalysisWrapper />} />

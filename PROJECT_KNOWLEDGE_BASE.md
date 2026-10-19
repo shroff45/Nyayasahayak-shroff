@@ -181,32 +181,29 @@ git status --porcelain         → 0 (tree untouched; also chmod +x on .bin shim
 
 CI passes only because `.github/workflows/ci.yml` runs `npm ci` first. **Fixed by the hygiene commit in §0**: `.gitignore` already listed `node_modules/`, `dist`, `dist/` and `.env` (lines 42, 71, 84, 117, 129) — the entries were simply inert because the paths were already tracked, which is why untracking, not gitignoring, was the actual repair. Two footnotes for the next person debugging a clone: (a) a fresh `npm ci` is mandatory, and (b) if `node_modules` ever came from git rather than npm, the `.bin/*` shims and `@esbuild/<platform>/bin/esbuild` lose their exec bit → `spawnSync … EACCES`, fixed by `chmod +x node_modules/.bin/*` or a clean `npm ci`.
 
-### D3 — 10.4% of `src/` is unreachable (15.6% after the nationals purge, 34.7% before it, 37.7% when this line was written)
+### D3 — 8.1% of `src/` is unreachable (10.4% after D28, 15.6% after the nationals purge, 37.7% when this line was written)
 
-Re-measured with `node tools/resolve-importers.mjs`, which is the only acceptable way to state a
-number in this section: **124 of 158** files reachable from `src/main.tsx` through resolved static
-**and** `React.lazy` dynamic imports; **34** are not, **4,206** lines of **40,348**. Two purges got
-it here: 4(purge) took the nationals subtree and the two orphaned `VoiceFilingInterface` copies
-(229 → 171 files, 99 → 47 unreachable), and D28 took the dead half of `src/features/main/` - 15
-files, 13 in the import graph plus `ui/LaserFlow.css` and `ui/TargetCursor.css`, which the graph
-cannot see because CSS is not a node, the same blind spot that made nationals "58 tracked, 56
-graph nodes" (47 → 32 files in that directory, and the reachable count did not move at all: 124
-before, 124 after, which is the only kind of bundle change a dead-code purge is entitled to claim).
-Every number above was re-run for this sentence and three of them were wrong in the prose before it
-was written - the file total moved by 3 lines when comments were edited inside `src/`, which is why
-`docs/PLAN_4a.md` says to quote file counts and re-measure line counts.
+Re-measured with `node tools/resolve-importers.mjs`: **151 files (39196 lines) / 123 reachable / 28 unreachable (3159 lines, 8.1 % of `src/`)**.
+Three purges got it here. 4(purge) took the nationals subtree and the two orphaned
+`VoiceFilingInterface` copies (229 -> 171 files). D28 took the dead half of `src/features/main/`
+(171 -> 158) and the reachable count did not move at all, because nothing in that set was live.
+D29 took `src/components/AdjournmentRiskPanel.tsx`, **which was live** - the first deletion in this
+programme to reduce the reachable set, because what it removed was a routed screen making a
+fabricated claim, not unreachable code. `reachable` went 124 -> 123, and that is the correct
+direction for that commit: a purge of dead code must not move the number, and a purge of a dishonest
+screen must. Every figure above came out of a run; the file total in particular moves when comments
+are edited inside `src/`, which `docs/PLAN_4a.md` §1 now says out loud.
 
 Everything in this section's history is this programme's own doing: D9's demo route deletion,
 D18's three deleted quantum copies, Q9 publishing the About page - which alone moved 8 files /
 1,426 lines out of the island in one commit, because publishing a page is a reachability change -
 and 4(purge).
 
-Largest remaining islands by lines: `src/personas/judge` (4 files / 755), `src/shared/components`
-(7 / 718), `src/personas/citizen` (4 / 582), `src/personas/police` (2 / 304), `src/modules/judge`
-(2 / 231). `src/features/main/` is **off this list entirely** - not "mostly cleaned", but 32 tracked
-files of which 32 are live - and the next purge, if there is one, is no longer a directory problem:
-the remaining 34 files sit in 6 directories with no single edge holding them together. The full list
-with per-file sizes and "no importers at all" markers: `node tools/resolve-importers.mjs --orphans`.
+Largest remaining islands by lines: `src/personas/citizen` (4 files / 582 lines), `src/shared/components` (6 / 510), `src/personas/police` (1 / 251),
+`src/modules/judge` (2 / 231), `src/types/fir.types.ts` (1 / 211). 28 unreachable files over 18 directories, and unlike the two
+purges before it no single edge holds any of them together - the census is per-file judgment now,
+which is why the plan's remaining blocks are migrations rather than deletions. Full list with
+sizes and importer reasons: `node tools/resolve-importers.mjs --orphans`.
 
 Two things this section used to get wrong and should not be trusted to repeat: it stated its counts
 from grep (see §8's method note), and it treated an unreachable file as an inert one — but `tsc`
@@ -306,7 +303,7 @@ as many commits as the reviewer likes - the `include: ["src"]` trap does not app
 
 | file | shape | importers | **live** importers | naming `Case` | live namers |
 |---|---|---|---|---|---|
-| `src/types.ts` | golden, 19 fields, several required | 10 | **5** | 6 | **3** (`DraftJudgmentPanel`, the adapter, `akhandLedger`) |
+| `src/types.ts` | golden, 19 fields, several required | 9 | **4** | 6 | **3** (`DraftJudgmentPanel`, the adapter, `akhandLedger`) |
 | `src/core/types.ts` | strict subset, missing **6** golden fields (4 required: `adjournmentsCount` `incidentDate` `isZeroFir` `applicableLaw`; 2 optional: `judgeId?` `zeroFirTransferStatus?`) | 7 | **0** | 3 | 0 |
 | `src/features/main/types.ts` | legacy intake (`caseNumber` `petitioner` `invokedActs` `title` `complexityScore` `pii`) | 12 | **12** | 8 | **8** ← every importer live, 0 dead namers |
 
@@ -417,6 +414,10 @@ and not a merge-blocker. | `geminiService.ts:187`, `Nyayabot.tsx:590` | medium |
 | D26 | **the store that wins the journal is not the store that holds the key.** After D6, a browser offering IndexedDB but no localStorage has a provably durable journal and still cannot boot: `akhandLedger.initialise` throws before `createLedger` is reached, because `webStorageIdentityVault` and the pinned-authority list are both written against `WebStorage`. It fails safe — an error on screen, never a false `persisted` — so this is a capability gap, not a lie, and `lockPrivateKey()` — which is the only thing that reaches the `non-extractable-in-indexeddb` tier, and is called by nothing in the app — stays a library function with a doc string for a caller. Closing it means deciding where a signing key may live, which is D12's question, so it waits for you. | `src/services/akhandLedger.ts:82-89`, `core/trust/keys.ts` `webStorageIdentityVault` | medium | decide |
 | D27 | **both map views fetch their library from a public CDN at runtime, and fall back to silence.** `PatrolMap.tsx:73-74` and `PendencyMap.tsx:46-47` inject `unpkg.com/leaflet@1.9.4` `<script>`/`<link>` tags and then gate the whole render on `if (window.L)`: no npm dependency, no local copy, no error path. A device that cannot reach unpkg - an air-gapped kiosk, a school proxy, a Content-Security-Policy - draws nothing and reports nothing, and `declare global { interface Window { L: any } }` puts every `L.*` call after it outside the type checker. `leaflet@^1.9` as a dependency is one line and removes the failure mode; `mockDelay` from `shared/utils/mockApi` is also still in the police screen's data path. Left open because vendoring a library (and deciding whether an offline map is a promise to a user) is a product call, not a cleanup. | `src/personas/police/pages/PatrolMap.tsx:15-20,36-74`, `src/personas/admin/pages/PendencyMap.tsx:43-47` | medium | decide |
 | D28 | **CLOSED (this commit), and it took 15 files rather than 13.** The dead half of `src/features/main/` is deleted: 13 graph files (2,468 lines) + `components/ui/LaserFlow.css` (5) + `components/ui/TargetCursor.css` (56), because CSS is not a node in an import graph and a `.tsx` that imports its own stylesheet leaves that stylesheet behind as an orphan nothing can see - the exact mechanism that made nationals "58 tracked / 56 graph". Proof taken before the deletion, not after: `--json` closure showed **0 importers from outside the set** (the only 6 edges were internal - `MainApp → {TargetCursor, Header, JudicialWellness, Background3D, SignIn}`, `Header → SmartSearch`), a BFS re-run with the set removed lost **0 live files** and orphaned **0** others, and `reachable` stayed 124 before and after. The three outer twins (`AnimatedPageWrapper`, `Modal`, `Spinner`) were `cmp`-identical to their live `components/common/` copies, so behaviour is fixed by two independent arguments. `src/features/main/` now has 32 tracked files, all 32 live. Two things this closed *wrongly*: the register row said 13 files and `geminiService.ts` was listed as a hazard - it is live, 4 live importers, imports only `types.ts` and `lib/withErrorRecovery.ts`, and nothing in the set, so there was no type thread to cut. | `git show --stat` · `--json` closure · BFS replay · `cmp` | low | closed |
+| D29 | **CLOSED (this commit) — `/judge/risk` scored invented people, so the screen is deleted, not disclaimed.** `src/components/AdjournmentRiskPanel.tsx` rendered a five-row `LAWYER_STATS` literal ("Adv. Sharma", "Adv. Verma", "Adv. Patel", "Adv. Singh", "Adv. Gupta") carrying `adjournmentRate`, `casesHandled` and `averageDelayMonths`, and `calculateRisk` thresholded those invented numbers into a HIGH/MEDIUM/LOW *assessment*. It was mounted with a hardcoded `lawyerId="L001"`, so every judge who opened the screen saw a fabricated adverse rating of a named advocate. The only disclosure was a source comment (`// Mock Lawyer Database`) while the About page's published standard is that limits are *printed on the screen*. No label fixes it: per-advocate adjournment history does not exist in this app, in any store. Deleted - component, `React.lazy` const, `AdjournmentRiskWrapper`, and the route, which becomes a `Navigate` to `/judge/board` for the same reason `/judge/dashboard` did (deleting a bookmarkable URL is worse than pointing it at its replacement). Its dead look-alike `personas/judge/components/AdjournmentRiskPanel.tsx` (70 lines) went with it. Recorded for 4(a): golden `src/types.ts` now exports `AdjournmentRisk` to nobody. | `grep -rn AdjournmentRisk src/` · `git log -p -- src/components/AdjournmentRiskPanel.tsx` | **high** | closed |
+| D30 | **CLOSED (this commit) — the honest s.346 panel is deleted too, because nothing could feed it.** `src/personas/judge/components/AdjournmentPanel.tsx` (223 lines, no importers) genuinely implemented BNSS s.346 - `caseData.adjournmentsCount ?? 0` against a max of 2, ceiling rendered in three places. Wiring it looked like the right move; measured, it is not. Golden `Case.adjournmentsCount` (`src/types.ts:20`) has exactly one live writer, `legacyCaseAdapter.ts:59`, which pins it to `0` unconditionally, and the ledger write path (`addBlock`, `ledgerRecords.ts`, the intake screen) carries no adjournment field at all. A wired panel would say "0 adjournments - within the s.346 limit" for every case ever filed: authoritative-looking fabrication, worse than absence. So both the fake scorer (D29) and the unusable honest one are gone. If s.346 returns it returns as a feature: an `ADJOURNMENT` block kind, a writer that fills it, and its own claim that the count came out of the store. | `grep -rn adjournmentsCount src/` | medium | closed (feature deferred) |
+| D31 | **CLOSED (this commit) — four dead look-alikes deleted, the fifth refused to die.** `personas/judge/components/HashVerifier.tsx` (300 lines) sat beside the routed, D18-honest `personas/judge/pages/HashVerifier.tsx` (359): an "improvement" landing in the wrong file keeps CI green, compiles fine, and ships nothing. Same shape in `personas/police/components/PatrolMap.tsx` (52) beside the live D27 map (434), and `shared/components/GoogleSignInModal.tsx` (207, header: *"Simulated Google OAuth Modal for Hackathon Demo"*) beside the mounted `UnifiedSignInModal.tsx` (628). Each deleted by name after `--json` showed 0 importers. **Not** deleted: `src/core/trust/index.ts` - see D32. | `--orphans` + `git ls-files \| grep -i <name>` + `grep -rn <name> tests/ tools/` | medium | closed |
+| D32 | **OPEN (tool gap, found by breaking the build): a file unreachable from `main.tsx` can still be load-bearing for the *verification* surface.** This commit's plan said "delete the trust barrel" - `src/core/trust/index.ts`, 68 lines, `--orphans` says *no importers at all*, and the resolver was right about the app. I deleted it and both gates went red: `tests/trust_ledger.test.ts` imports it, and `tools/ledger_repro.cjs` esbuild-bundles it as the trust layer's single entry point (`npm test` → `ERR_MODULE_NOT_FOUND src/core/trust/index.ts`; harness → `esbuild could not bundle src/core/trust/index.ts`). It is a file the app outgrew and the tests adopted, which is not the same thing as dead. `--json` cannot see it: reachability is seeded from `src/main.tsx` and `tests/`/`tools/` are not entries. The fix (this PR's third commit): `--orphans` annotates a candidate whose path or basename appears under `tests/` or `tools/` as "verification-only entry point". Until that lands, the procedure used for every deletion list in this register is the resolver *and* `grep -rn <name> tests/ tools/`. | `git checkout HEAD -- src/core/trust/index.ts` then both gates green again | medium | open → closed in this PR |
 
 ## 14. What I need from you (every answer changes what I write first)
 
