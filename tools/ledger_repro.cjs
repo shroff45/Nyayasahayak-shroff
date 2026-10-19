@@ -759,8 +759,9 @@ const main = async () => {
     const routesWanted = [
         'path="certificate/:evidenceId"', 'path="chargesheet/:caseId/gate"',
         'path="case/:id/chain-of-custody"', 'path="custody"', 'path="certificate"', 'path="chargesheet"',
-        // Q9, and the reason it is checked here: About existed for the whole life of this repository
-        // as a component imported by exactly one dead file (src/features/main/MainApp.tsx). A
+        // Q9's reason for asserting this here: About spent the whole life of this repository as a
+        // component imported by exactly one dead file (src/features/main/MainApp.tsx - deleted by
+        // D28, which is why this sentence is past tense and the needle below is not). A
         // component that is not routed is a component that does not exist, so the route and the three
         // sidebar links below are the claim - not the 250 lines of JSX, which passed review before.
         'path="/about"',

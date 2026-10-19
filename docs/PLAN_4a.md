@@ -53,7 +53,17 @@ After the nationals purge (PR #7), recomputed the same way with `node tools/reso
 | unresolved first-party specifiers | 0 |
 | largest unreachable island | `src/features/main/` - 13 files, 2,468 lines, inside a directory that is 32 files *live* |
 
-Both blocks stay: the first is the baseline this plan was written against, and quietly restating
+And after D28 (PR #9), same command:
+
+| | |
+|---|---|
+| files under `src/` | 158 (40,348 lines) |
+| reachable from `src/main.tsx` | 124 (unchanged - a purge that changes nothing live) |
+| unreachable | 34 (4,206 lines, **10.4 %** of `src/`) |
+| unresolved first-party specifiers | 0 |
+| `src/features/main/` | 32 files tracked, **all 32 live**: the directory left the census |
+
+All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
 the file counts and the reachability split are the load-bearing numbers. The total line count is not -
 it moved by 3 lines while the prose above was being written, because comments inside `src/` are
@@ -67,12 +77,19 @@ this repository hardcodes it.
 |---|---|---|---|---|---|
 | `src/types.ts` | **golden** — 19 fields, several required | 10 | 5 | 6 | 3 |
 | `src/core/types.ts` | strict subset, missing 6 golden fields (4 required: `adjournmentsCount`, `incidentDate`, `isZeroFir`, `applicableLaw`; 2 optional: `judgeId?`, `zeroFirTransferStatus?`) | 7 | **0** | 3 | 0 |
-| `src/features/main/types.ts` | legacy intake — `caseNumber`, `petitioner`, `invokedActs`, `title`, `complexityScore`, `pii` | 14 | 12 | 9 | **8** ← the migration bulk |
+| `src/features/main/types.ts` | legacy intake — `caseNumber`, `petitioner`, `invokedActs`, `title`, `complexityScore`, `pii` | 12 | **12** | 8 | **8** ← all live, 0 dead namers |
 
-Rows re-measured after 4(purge); the `src/core/types.ts` row is unchanged because its importers were never in the deleted subtree.
+Re-measured after D28 (PR #9), which deleted two more importers of the legacy model and its one
+dead namer: `src/features/main/types.ts` is now imported by 12 files and **every one of them is
+live**, so that model's migration no longer has a dead file holding its `tsc` hostage. The other two
+rows are untouched by D28 - `src/core/types.ts` included, again, because its importers were never in
+either deleted directory. Take the numbers from `--model` anyway; this sentence is already older than
+the command that produced it.
 
 The set that decides your commit boundaries is the union of the three **unreachable** namer lists:
-**7 files**, down from 16 the moment the nationals subtree was deleted. Get it with
+**6 files**. It was 16 when this plan was written: the nationals purge took 8 of them, and D28
+(PR #9) took `src/features/main/MainApp.tsx`, which was the only dead namer the legacy model had.
+Get it with
 
 ```
 for m in src/types.ts src/core/types.ts src/features/main/types.ts; do
@@ -90,13 +107,12 @@ after the purge deleted the subtree. A directory-based listing missed 2 of the 1
 directories whose *other* files were live - which is exactly why the census is taken with
 `--model` and not with `grep -r`.
 
-The 7 that survive are the entire scope of this block:
+The 6 that survive are the entire scope of this block:
 
 ```
 src/components/CaseDetailsPanel.tsx
 src/components/CaseQueue.tsx
 src/components/JudgeDashboard.tsx
-src/features/main/MainApp.tsx
 src/modules/judge/JudgeDashboard.tsx
 src/modules/judge/features/CaseTriage.tsx
 src/personas/judge/components/DraftJudgmentPanel.tsx
@@ -109,11 +125,19 @@ src/personas/judge/components/DraftJudgmentPanel.tsx
    `components/CaseQueue.tsx`) green while everything around them moves.
 2. **A type edit and the death of its dead namers are one commit.** Never two. `tsc` is the whole
    reason, and CI runs `tsc`.
-3. **`legacyCaseAdapter.ts` is 4(a)'s file, not anyone else's.** Today it has 4 importers, 2 live
+3. **`legacyCaseAdapter.ts` is 4(a)'s file, not anyone else's.** It has **3** importers: 2 live
    (`App.tsx`, and `personas/police/pages/ChargeSheetGatePage.tsx` whose `toGoldenCase` at `:93`
-   converts *workspace state*, not a journal record) and 2 orphans. `applicableLawFor` is exported
-   only from it (`:22`) and imported only by unreachable files — so if the purge deletes those, the
-   export becomes dead in the same commit and must go with them, not in a follow-up.
+   converts *workspace state*, not a journal record) and 1 orphan (`src/components/JudgeDashboard.tsx`,
+   which is one of the 6 above, so it survives into this block). `applicableLawFor` is exported only
+   from it (`:22`) and its only non-internal consumer is that same orphan - which is 4(a)'s file to
+   delete, so the export's retirement belongs here and in no purge: D28 removed 15 files and did not
+   touch either number - 3 importers before this commit, 3 after. What did move it was nobody's doing:
+   the "4 importers, 2 orphans" this rule carried from PR #4 was already false when the purge arrived,
+   and this sandbox is a `--depth=1` clone, so not one commit between here and PR #4 can be named as
+   the culprit. That is the whole argument for re-measuring instead of quoting:
+   `node tools/resolve-importers.mjs --model src/core/workspace/legacyCaseAdapter.ts`.
+   When the orphan dies, the export goes with it in the same commit, not in a follow-up.
+
 4. **Discharged as written: the nationals subtree died in the purge (4(purge)), not here** (PR #7).
    4(a) never migrated `src/features/nationals/core/types.ts` and never reconciled it; the file went
    with its directory, which is what this rule asked for. One number in the original wording was
