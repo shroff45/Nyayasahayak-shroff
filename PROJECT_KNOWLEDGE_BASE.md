@@ -15,7 +15,7 @@ This document exists so you can point at a line and say "do that." Section 13 is
 | 2 | Hygiene commit | **DONE in git terms** — `.env`, `dist/`, `node_modules/` untracked (22,993 paths), `.env.example` added, `eslint@^8.57` added as a devDependency so the declared `npm run lint` gate can run. Tracked files: 23,290 → **297** |
 | 2a | Rotate the API key at Google | **NOT NEEDED** — measured after the fact: the committed 24-char value starts `YO` and fails Google's `^AIza[0-9A-Za-z_-]{35}$` shape, i.e. an unfilled placeholder, and only one content version of `.env` has ever existed. Nothing was exposed. If you did paste a real key at some point outside this repo's history, rotate it in AI Studio anyway |
 | 3 | `git filter-repo` + force-push `main` | **RECOMMEND NOT DOING IT** (see D1: the value was a placeholder). Left here in case you want it anyway: `pip install git-filter-repo` → `git filter-repo --path .env --invert-paths --force` → `git push --force-with-lease origin main`. Note GitHub keeps the old objects reachable via PR refs and its own GC, and every other clone of yours must be re-pointed — cost without benefit for a non-secret |
-| 4 | Sequence after D0 | **as executed**: 4(e) → PR #4 (D18 + Q9/D19 + the census tool, `docs/PLAN_4a.md`) → PR #5 (D20 intake-to-ledger, Playwright, D25) → PR #6 (D6 probe-owns-`persisted`, D13 real HMAC, D16 README + claim 29) → **PR #7, this commit: 4(purge)**, the nationals deletion + the 13 log files + `uuid` → **PR #8**, the 13 dead files inside `src/features/main/` (D28; *not* a `git rm -r`, that directory is 32 files live) → 4(a) `Case` unification, whose namer set is now 7 files instead of 16 |
+| 4 | Sequence after D0 | **as executed**: 4(e) → PR #4 (D18 + Q9/D19 + the census tool, `docs/PLAN_4a.md`) → PR #5 (D20 intake-to-ledger, Playwright, D25) → PR #6 (D6 probe-owns-`persisted`, D13 real HMAC, D16 README + claim 29) → **PR #7, this commit: 4(purge)**, the nationals deletion + the 13 log files + `uuid` → **PR #8**, the 13 dead files inside `src/features/main/` (D28; *not* a `git rm -r`, that directory is 32 files live) → **PR #9, this commit: D28**, the dead half of `src/features/main/` (15 files, CSS included) → 4(a) `Case` unification, whose namer set is now **6** files (was 16) |
 | 5–13 | recorded, scheduled | **Q7 CLOSED** (PR #7) - `src/features/nationals/` deleted: 58 files / 13,274 lines, and its 6 live files were all reached through one lazy edge in `App.tsx`; **Q8 CLOSED** - `QuantumHashProof` deleted in `d2d26bb2`, and the fingerprint screen became a real check on route `/integrity` in PR #4 commit 1; **Q9 CLOSED** - `About` is routed at `/about` (public *and* authenticated branches) and linked from all three live persona sidebars, which required D19's copy fixes first; Q10 7 locales + lazy rest (open); **Q11 SCHEDULED for PR #5** - Playwright, one chained journey, after D20 makes the chain real; Q12 provisional skeleton, publishing paused; **Q13 CLOSED** - `docs/PLAN_4a.md` is in the repository, so 4(a) opens from `HEAD` and not from a path on one person's machine |
 
 **Full gate, run locally for the first time on the synced tree** (previously impossible — the tracked Windows `node_modules` broke every tool that spawns esbuild): `tsc --noEmit` → **0 errors**; `npm test` → **49 node tests pass** + **14 statute tests pass**; `node tools/ledger_repro.cjs` → **18 claims hold, 0 do not**; `npm run build` → 98 assets, largest **577.74 kB** of the 600 kB per-asset budget (22.26 kB spare). `npm run lint` → **red**, see §12.
@@ -99,6 +99,25 @@ Two things a reviewer should not mistake for an over-deletion:
 screens that no longer exist; re-trimming an analysis so its citations match a later deletion is
 how a document launders itself, and the honest fix is a dated note, not a diff.
 
+### PR #9 execution log (D28: the dead half of `src/features/main/`)
+
+| what | number |
+|---|---|
+| files deleted | 16 = 13 import-graph files + `ui/LaserFlow.css` + `ui/TargetCursor.css` + `lint_log.txt` (the log the four existing ignore patterns failed to catch, so `.gitignore` gained `*_log.txt`) |
+| lines | 2,468 in the graph files, 61 in the two stylesheets, 17 in the log = 2,546; `git show --numstat` says **2,535** for the same 16 paths, and the 11-line gap is `split('\n') counting a phantom final line per file while git does not. Quote the file count; re-measure the line count |
+| proof before deleting | `--json` closure: 0 outside importers, 6 internal edges; BFS replay: 0 live files lost, 0 files newly orphaned; `cmp`: 3 twin pairs byte-identical to their live `components/common/` copies |
+| reachability | 171 files / 124 reachable / 47 unreachable (6,674 l, 15.6 %) → 158 / **124** / 34 (4,206 l, **10.4 %**) |
+| the directory | `src/features/main/`: 47 tracked → 32, and all 32 live. 45 graph nodes → 32, 32 live |
+| side effects on the plan | 4(a)'s dead-namer census 7 → 6; `src/features/main/types.ts` → 0 dead namers and 12/12 live importers; `applicableLawFor` survives (its dead consumer is `src/components/JudgeDashboard.tsx`, not a D28 file), so its retirement stays in 4(a); `legacyCaseAdapter.ts`'s importer count in `docs/PLAN_4a.md` rule 3 was stale-by-one before this commit and is now re-measured to 3 |
+| gates | `tsc` 0 errors · `npm test` 63/63 · `node tools/ledger_repro.cjs` 29/29 · build green, 97 assets under 600 kB |
+
+One comment changed outside the deletion, and it is the kind that gets silently deleted instead: claim
+"Each screen is routed, including the deep links a court order would cite" justified its
+`path="/about"` needle by pointing at `MainApp.tsx` as About's only (dead) importer. The needle is
+unaffected by that file's death, so the comment went past tense and the check kept its teeth. A purge
+that removes the *evidence* a comment cites must not remove the assertion - the assertion is the part
+that was ever load-bearing.
+
 ## 1. What this project actually is
 
 A single-page React 18 + TypeScript + Vite application for India's BNS/BNSS/BSA transition. There is **no backend, no server, no database** in this repository — `git ls-files | grep -E "server|api/|express|prisma|supabase|firebase"` returns nothing. State lives in the browser (localStorage) and is protected by real SHA-256 hashing, an RFC-6962-style Merkle tree, and an ECDSA P-256 device signature over the daily anchor root.
@@ -162,29 +181,32 @@ git status --porcelain         → 0 (tree untouched; also chmod +x on .bin shim
 
 CI passes only because `.github/workflows/ci.yml` runs `npm ci` first. **Fixed by the hygiene commit in §0**: `.gitignore` already listed `node_modules/`, `dist`, `dist/` and `.env` (lines 42, 71, 84, 117, 129) — the entries were simply inert because the paths were already tracked, which is why untracking, not gitignoring, was the actual repair. Two footnotes for the next person debugging a clone: (a) a fresh `npm ci` is mandatory, and (b) if `node_modules` ever came from git rather than npm, the `.bin/*` shims and `@esbuild/<platform>/bin/esbuild` lose their exec bit → `spawnSync … EACCES`, fixed by `chmod +x node_modules/.bin/*` or a clean `npm ci`.
 
-### D3 — 15.6% of `src/` is unreachable (34.7% before the nationals purge, 37.7% when this line was written)
+### D3 — 10.4% of `src/` is unreachable (15.6% after the nationals purge, 34.7% before it, 37.7% when this line was written)
 
 Re-measured with `node tools/resolve-importers.mjs`, which is the only acceptable way to state a
-number in this section: **124 of 171** files reachable from `src/main.tsx` through resolved static
-**and** `React.lazy` dynamic imports; **47** are not, **6,674** lines of **42,816**. Before the
-nationals purge this read 130/229 and 99/19,716 - and the sentence before *that* one said
-131/98/19,611, which was already a file out of date the day it was written. That is the argument
-for the command over the number. Reachability moved 130 → 124 (the six nationals files the route
-kept alive) and the unreachable set moved 99 → 47 (50 nationals files plus the two orphaned
-`VoiceFilingInterface` copies that `uuid` was propping up).
+number in this section: **124 of 158** files reachable from `src/main.tsx` through resolved static
+**and** `React.lazy` dynamic imports; **34** are not, **4,206** lines of **40,348**. Two purges got
+it here: 4(purge) took the nationals subtree and the two orphaned `VoiceFilingInterface` copies
+(229 → 171 files, 99 → 47 unreachable), and D28 took the dead half of `src/features/main/` - 15
+files, 13 in the import graph plus `ui/LaserFlow.css` and `ui/TargetCursor.css`, which the graph
+cannot see because CSS is not a node, the same blind spot that made nationals "58 tracked, 56
+graph nodes" (47 → 32 files in that directory, and the reachable count did not move at all: 124
+before, 124 after, which is the only kind of bundle change a dead-code purge is entitled to claim).
+Every number above was re-run for this sentence and three of them were wrong in the prose before it
+was written - the file total moved by 3 lines when comments were edited inside `src/`, which is why
+`docs/PLAN_4a.md` says to quote file counts and re-measure line counts.
 
 Everything in this section's history is this programme's own doing: D9's demo route deletion,
 D18's three deleted quantum copies, Q9 publishing the About page - which alone moved 8 files /
 1,426 lines out of the island in one commit, because publishing a page is a reachability change -
 and 4(purge).
 
-Largest remaining islands by lines: `src/features/main` (13 files / 2,468 — 37% of all unreachable
-lines, and **not** a `git rm -r`: the directory is 47 tracked files, 32 of them live, including
-`services/geminiService.ts`, `types.ts` and the whole `about/` family), `src/personas/judge`
-(4 / 755), `src/shared/components` (7 / 718), `src/personas/citizen` (4 / 582, was 5 / 1,033
-before the voice-filing orphan went), `src/components` (4 / 469, was 5 / 752). The full list with
-per-file sizes and "no importers at all" markers:
-`node tools/resolve-importers.mjs --orphans`.
+Largest remaining islands by lines: `src/personas/judge` (4 files / 755), `src/shared/components`
+(7 / 718), `src/personas/citizen` (4 / 582), `src/personas/police` (2 / 304), `src/modules/judge`
+(2 / 231). `src/features/main/` is **off this list entirely** - not "mostly cleaned", but 32 tracked
+files of which 32 are live - and the next purge, if there is one, is no longer a directory problem:
+the remaining 34 files sit in 6 directories with no single edge holding them together. The full list
+with per-file sizes and "no importers at all" markers: `node tools/resolve-importers.mjs --orphans`.
 
 Two things this section used to get wrong and should not be trusted to repeat: it stated its counts
 from grep (see §8's method note), and it treated an unreachable file as an inert one — but `tsc`
@@ -271,18 +293,22 @@ The About page and the landing page's `End-to-End Encrypted` badge were **not** 
 ## 8. The three `Case` models — and the only safe way to change them
 
 Measured by `node tools/resolve-importers.mjs --model <file> --symbol Case`, i.e. resolved rather than
-grepped, and re-measurable by anyone in one command per row. Re-measured after 4(purge), and the movement is all in the importer
+grepped, and re-measurable by anyone in one command per row. Re-measured after D28 as well, and the movement is still all in the importer
 columns: the golden model went 11 → 10 importers and 7 → 6 namers, the legacy model 15 → 14, each
 because a file inside the deleted subtree used to name it. `src/core/types.ts` did not move at all -
 none of its importers were in that subtree - which is the useful kind of null result: the purge
 changed reachability, not the type surface. The union of the three dead-namer lists came out to
-exactly the 7 files listed below, recomputed rather than remembered, which is what a census is for.
+exactly the 6 files listed below, recomputed rather than remembered, which is what a census is for.
+D28's contribution is the interesting one: it deleted `MainApp.tsx`, the legacy model's only dead
+namer, so `src/features/main/types.ts` went 14 → 12 importers (2 of its importers were in that set)
+and 9 → 8 namers with the dead column landing on 0. A model with no dead namers can be migrated in
+as many commits as the reviewer likes - the `include: ["src"]` trap does not apply to it.
 
 | file | shape | importers | **live** importers | naming `Case` | live namers |
 |---|---|---|---|---|---|
 | `src/types.ts` | golden, 19 fields, several required | 10 | **5** | 6 | **3** (`DraftJudgmentPanel`, the adapter, `akhandLedger`) |
 | `src/core/types.ts` | strict subset, missing **6** golden fields (4 required: `adjournmentsCount` `incidentDate` `isZeroFir` `applicableLaw`; 2 optional: `judgeId?` `zeroFirTransferStatus?`) | 7 | **0** | 3 | 0 |
-| `src/features/main/types.ts` | legacy intake (`caseNumber` `petitioner` `invokedActs` `title` `complexityScore` `pii`) | 14 | 12 | 9 | **8** ← the real migration bulk |
+| `src/features/main/types.ts` | legacy intake (`caseNumber` `petitioner` `invokedActs` `title` `complexityScore` `pii`) | 12 | **12** | 8 | **8** ← every importer live, 0 dead namers |
 
 Method, now a program instead of a paragraph: resolve every `from` specifier through the alias table
 read out of `vite.config.ts` **and** `tsconfig.json` (and fail if those two disagree), resolve relative
@@ -294,16 +320,16 @@ there is no excuse for using grep, because the resolver is in the repository.
 
 The rule that governs commit ordering: **`tsc` typechecks dead files** (`include: ["src"]`). So any
 unreachable file that names a type you edit must be deleted or fixed **in the same commit**, or the
-gate goes red on code nobody runs. The full set — unreachable files naming `Case` from any of the
-three models — is **7 files**: `src/components/{CaseDetailsPanel,CaseQueue,JudgeDashboard}.tsx`,
-`src/features/main/MainApp.tsx`, `src/modules/judge/JudgeDashboard.tsx`,
-`src/modules/judge/features/CaseTriage.tsx`, `src/personas/judge/components/DraftJudgmentPanel.tsx`.
-The history of that number is the reason it must be recomputed and never remembered: 18 from a
-draft census that counted prose as a type reference, 17 as first recorded here, 16 after PR #4
-deleted `src/features/nationals/components/DocumentAnalysis.tsx`, and 7 after 4(purge) deleted the
-fourth model and its island - including two more namers (`src/features/nationals/constants/mockData.ts`,
-7 `Case` literal constructions, and `src/features/nationals/modules/citizen/VoiceFilingInterface.tsx`,
-3) that a directory-based listing missed because the files beside them were live.
+gate goes red on code nobody runs. The full set - unreachable files naming `Case` from any of the
+three models - is **6 files**: `src/components/{CaseDetailsPanel,CaseQueue,JudgeDashboard}.tsx`,
+`src/modules/judge/JudgeDashboard.tsx`, `src/modules/judge/features/CaseTriage.tsx`,
+`src/personas/judge/components/DraftJudgmentPanel.tsx`. The history of that number is the reason it
+must be recomputed and never remembered: 18 from a draft census that counted prose as a type
+reference, 17 as first recorded here, 16 after PR #4 deleted
+`src/features/nationals/components/DocumentAnalysis.tsx`, 7 after 4(purge) deleted the fourth model
+and its island - including two more namers (`src/features/nationals/constants/mockData.ts`, 7 `Case`
+literal constructions, and `src/features/nationals/modules/citizen/VoiceFilingInterface.tsx`, 3) that
+a directory-based listing missed - and 6 after D28 deleted `src/features/main/MainApp.tsx` by name.
 
 One measurement note kept on purpose, because it is why the tool strips JSX text before it searches:
 an earlier draft of the census counted a file as a namer if the *word* appeared in it at all, which
@@ -371,7 +397,7 @@ Rules that have kept this project from lying to itself: `tools/ledger_repro.cjs`
 | D12 | hardcoded `INTEGRITY_SECRET`; auth is a role picker | `AuthContext.tsx:24` | medium | decide, §14 Q6 |
 | D13 | **closed** (PR #6): the last `crypto-js` importer is gone - its session HMAC runs on `crypto.subtle` now. The swap was cross-checked against the old library at key lengths 27/63/64/65/200 (64 and 65 straddle SHA-256's block size, where an implementation that pads an over-long key instead of hashing it down agrees on short secrets and diverges on long ones), so every session already signed in someone's localStorage still verifies. `tests/auth_signature.test.ts` pins a crypto-js 4.2.0 golden plus three-way agreement with node's OpenSSL HMAC, so the guarantee outlives the dependency that produced the constant. The writers await `persistSession`, which is what `isLoading` is released after, and the restore runs in a `finally` because a stuck flag is D25's infinite spinner. `INTEGRITY_SECRET` untouched (D12's call), and the failure log no longer reads "possible tampering detected" - a digest mismatch is a digest mismatch. The harness claim on this subject went from observation to gate: zero importers repo-wide *and* no entry in `package.json`, since a listed dependency invites the import straight back. Entry chunk 543.75 kB to 473.78 kB. | `src/core/auth/AuthContext.tsx`, `tests/auth_signature.test.ts` | low | 4(b) |
 | D14 | missing `incidentDate` resolves to the stricter branch | `forensicInterlock.ts` | low-but-legal | 4(a)-i note |
-| D15 | **half-closed** (`4aa7620e`): `eslint@^8.57` is now a devDependency so the declared gate runs — and it is red (154 problems in 56 files: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `ban-ts-comment`, 2 `exhaustive-deps`; 100 `no-explicit-any`). Not added to CI yet. The purge block then measured that prediction: **154 problems in 56 files → 82 in 33** (49 `no-explicit-any`, 12 `no-useless-escape`, 9 `no-unused-vars`, 9 `prefer-const`, 2 `no-empty`, 1 `exhaustive-deps`), and it removed **all three** `ban-ts-comment` offenders, which is the same fact claim 22 states from the other side: every `@ts-ignore` left in the repo is a real one. | fixed in §0 (`eslint@^8.57`, matching the legacy `.eslintrc.json` format); the gate now **runs and is red**: 154 problems in 56 files (42 errors: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `@typescript-eslint/ban-ts-comment`, 2 `react-hooks/exhaustive-deps`; 112 warnings: 100 `no-explicit-any`, 12 `no-unused-vars`) | medium | 4(purge) — deleting the 98 unreachable files removes roughly half the offenders; do **not** add to CI until green
+| D15 | **half-closed** (`4aa7620e`): `eslint@^8.57` is now a devDependency so the declared gate runs — and it is red (154 problems in 56 files: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `ban-ts-comment`, 2 `exhaustive-deps`; 100 `no-explicit-any`). Not added to CI yet. The purge block then measured that prediction: **154 problems in 56 files → 82 in 33** (49 `no-explicit-any`, 12 `no-useless-escape`, 9 `no-unused-vars`, 9 `prefer-const`, 2 `no-empty`, 1 `exhaustive-deps`), and it removed **all three** `ban-ts-comment` offenders, which is the same fact claim 22 states from the other side: every `@ts-ignore` left in the repo is a real one. D28 measured it a second time: **62 problems in 28 files** (38 `no-explicit-any`, 12 `no-useless-escape`, 9 `no-unused-vars`, 2 `no-empty`, 1 `prefer-const`) - the direction is the useful part, so re-run `npm run lint` instead of quoting either pair. | fixed in §0 (`eslint@^8.57`, matching the legacy `.eslintrc.json` format); the gate now **runs and is red**: 154 problems in 56 files (42 errors: 19 `no-useless-escape`, 14 `prefer-const`, 4 `no-empty`, 3 `@typescript-eslint/ban-ts-comment`, 2 `react-hooks/exhaustive-deps`; 112 warnings: 100 `no-explicit-any`, 12 `no-unused-vars`) | medium | 4(purge) — deleting the 98 unreachable files removes roughly half the offenders; do **not** add to CI until green
 | D17 | **closed** (`e3642d9d`): all three suppressions gone, and each was hiding something — see the 4(e) execution log. Enforced by harness group H-era check "No compiler suppressions anywhere in src/", proven falsifiable by planting a directive and watching it fail. | `src/features/main/services/geminiService.ts:158`, `features/main/components/LitigantHappiness.tsx:29`, `features/nationals/components/LitigantHappiness.tsx:29` (last one dies with D8) | medium | 4(e) — fix the real type instead of suppressing
 | D16 | **closed** (PR #6): `README.md` rewritten as seven sections a reader can hold against the code - What this is / What this is not / Trust model / Statutory anchors / Getting started / Quality gates / License. It replaces a file that advertised "AI & Blockchain", a "Zero-Knowledge Proof" verifier, "Blockchain Anchoring for admissibility", a flat "60 days under s.193", `crypto-js` as the security stack, a clone URL of `your-username/nyayasahayak-hybrid`, and a license with no LICENSE file - the last of which is not a wording problem but a grant nobody made, so the License section says **No license is currently declared** and states the consequence instead of guessing on the owner's behalf. Pinned by harness claim 29: the seven headings in order, the license sentence, `npm ci` present, every `npm run` it names existing in `package.json`, the four routes it cites existing in `App.tsx`, the fabricated metric strings absent, and every mention of the three mechanism words it may name sitting inside a negation - a document has to be allowed to deny the thing it is denying. | `README.md` | low | 4(e) |
 | D18 | **closed** (`02d9a6c`): the screen now hashes the bytes in front of it and looks for the digest in the journal; the vocabulary, the case-insensitivity and the `getProof()`-only notion of "anchored" are asserted by harness group G. The AI document-analysis path in the same file is untouched - that one is a legitimate use of the model. | `geminiService.ts:229` (was) | **high** | 4(e) → PR #4 |
@@ -390,7 +416,7 @@ deliberately - deleting it would be the fix that assumes the guardrail is correc
 and not a merge-blocker. | `geminiService.ts:187`, `Nyayabot.tsx:590` | medium | decide |
 | D26 | **the store that wins the journal is not the store that holds the key.** After D6, a browser offering IndexedDB but no localStorage has a provably durable journal and still cannot boot: `akhandLedger.initialise` throws before `createLedger` is reached, because `webStorageIdentityVault` and the pinned-authority list are both written against `WebStorage`. It fails safe — an error on screen, never a false `persisted` — so this is a capability gap, not a lie, and `lockPrivateKey()` — which is the only thing that reaches the `non-extractable-in-indexeddb` tier, and is called by nothing in the app — stays a library function with a doc string for a caller. Closing it means deciding where a signing key may live, which is D12's question, so it waits for you. | `src/services/akhandLedger.ts:82-89`, `core/trust/keys.ts` `webStorageIdentityVault` | medium | decide |
 | D27 | **both map views fetch their library from a public CDN at runtime, and fall back to silence.** `PatrolMap.tsx:73-74` and `PendencyMap.tsx:46-47` inject `unpkg.com/leaflet@1.9.4` `<script>`/`<link>` tags and then gate the whole render on `if (window.L)`: no npm dependency, no local copy, no error path. A device that cannot reach unpkg - an air-gapped kiosk, a school proxy, a Content-Security-Policy - draws nothing and reports nothing, and `declare global { interface Window { L: any } }` puts every `L.*` call after it outside the type checker. `leaflet@^1.9` as a dependency is one line and removes the failure mode; `mockDelay` from `shared/utils/mockApi` is also still in the police screen's data path. Left open because vendoring a library (and deciding whether an offline map is a promise to a user) is a product call, not a cleanup. | `src/personas/police/pages/PatrolMap.tsx:15-20,36-74`, `src/personas/admin/pages/PendencyMap.tsx:43-47` | medium | decide |
-| D28 | **PR #8's list is 13 files, not a directory.** After the nationals purge the largest island is `src/features/main/`'s dead half — and only its dead half: 47 tracked files, 32 of them live (`services/geminiService.ts` has 4 live importers and is load-bearing for the intake, the bot and the legal-hub screen; `types.ts` is imported by `WorkspaceContext` and `legacyCaseAdapter`; the whole `about/` family is reachable). The candidates, from `--orphans`: `components/ui/LaserFlow.tsx` (607, no importers), `ui/TargetCursor.tsx` (310), `MainApp.tsx` (256, no importers — "do not resurrect MainApp" means never route it, not keep the file), `components/Header.tsx` (246), `SmartSearch.tsx` (180), `JudicialWellness.tsx` (174), `NetworkBackground.tsx` (160), `common/NetworkBackground.tsx` (160), `ui/Background3D.tsx` (141), `SignIn.tsx` (138), `AnimatedPageWrapper.tsx` (51), `Modal.tsx` (32), `Spinner.tsx` (13). Two facts make it cheaper than it looks, both to be re-verified before the commit rather than trusted from here: the set is self-referential (the "1 dead importer" entries import each other, so nothing outside the 13 holds them — check with `--json`), and three of them are duplicates with a live twin next door at the same size (`components/{AnimatedPageWrapper,Modal,Spinner}.tsx` vs the reachable `components/common/*`), which is the strongest possible evidence that deleting a copy cannot change behaviour. | `node tools/resolve-importers.mjs --orphans \| grep src/features/main` | low | 4(purge-2) |
+| D28 | **CLOSED (this commit), and it took 15 files rather than 13.** The dead half of `src/features/main/` is deleted: 13 graph files (2,468 lines) + `components/ui/LaserFlow.css` (5) + `components/ui/TargetCursor.css` (56), because CSS is not a node in an import graph and a `.tsx` that imports its own stylesheet leaves that stylesheet behind as an orphan nothing can see - the exact mechanism that made nationals "58 tracked / 56 graph". Proof taken before the deletion, not after: `--json` closure showed **0 importers from outside the set** (the only 6 edges were internal - `MainApp → {TargetCursor, Header, JudicialWellness, Background3D, SignIn}`, `Header → SmartSearch`), a BFS re-run with the set removed lost **0 live files** and orphaned **0** others, and `reachable` stayed 124 before and after. The three outer twins (`AnimatedPageWrapper`, `Modal`, `Spinner`) were `cmp`-identical to their live `components/common/` copies, so behaviour is fixed by two independent arguments. `src/features/main/` now has 32 tracked files, all 32 live. Two things this closed *wrongly*: the register row said 13 files and `geminiService.ts` was listed as a hazard - it is live, 4 live importers, imports only `types.ts` and `lib/withErrorRecovery.ts`, and nothing in the set, so there was no type thread to cut. | `git show --stat` · `--json` closure · BFS replay · `cmp` | low | closed |
 
 ## 14. What I need from you (every answer changes what I write first)
 

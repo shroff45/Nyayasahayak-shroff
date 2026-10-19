@@ -128,6 +128,12 @@ tsc_*.txt
 *.log
 node_modules
 
+# stdout captured into a file for a human to read once and never again.
+# *_log.txt is here because lint_log.txt slipped past the four patterns above
+# and stayed tracked for the whole life of the repo (17 lines of an ESLint
+# "couldn't find a configuration file" dump, from before D15 wired eslint).
+*_log.txt
+
 # Playwright outputs
 # The reports and traces are per-run artefacts; committing them would put a
 # browser's screenshots in the repository next to the code that produced them.
