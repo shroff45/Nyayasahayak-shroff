@@ -194,8 +194,10 @@ const CitizenComplaint: React.FC = () => {
             });
             setSubmissionStatus('success');
         } catch (err) {
-            // The ledger throws rather than half-writing: no localStorage, or a quota that refused the
-            // write. Either way there is no record, so the success screen must not appear.
+            // The ledger throws rather than half-writing: no storage the identity key can live in, or
+            // a quota that refused the write. Either way there is no record, so the success screen must
+            // not appear. A store that accepts writes without keeping them does not throw - it lands on
+            // the `persisted: false` branch of the receipt instead, which is the other half of the deal.
             setError(err instanceof Error ? err.message : String(err));
             setSubmissionStatus('error');
         }
@@ -426,10 +428,12 @@ const CitizenComplaint: React.FC = () => {
                             </div>
                             <div className="flex items-baseline justify-between gap-4">
                                 <dt className="text-xs uppercase tracking-wider text-slate-500 font-bold">Storage</dt>
-                                {/* The façade refuses to run without localStorage, so today `persisted` is
-                                    only false if a driver is changed underneath it - which is what the
-                                    IndexedDB block (D6) does. The branch is there so the day that lands,
-                                    this page tells the truth about it without an edit. */}
+                                {/* Reachable, and now by design: `persisted` is the ledger's own
+                                    write-then-read-back probe, so a browser that accepts a write and
+                                    discards it (Safari in private mode) or refuses both stores (a kiosk
+                                    profile) arrives here with false instead of a green "Saved". Before
+                                    D6 the flag was the presence of `window.localStorage`, which is true
+                                    in exactly those two cases - the sentence below was the lie. */}
                                 <dd className={`text-sm font-semibold ${receipt.persisted ? 'text-emerald-400' : 'text-amber-400'}`}>
                                     {receipt.persisted ? 'Saved to this device' : 'Session only — will not survive page reload'}
                                 </dd>

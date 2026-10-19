@@ -324,13 +324,33 @@ const main = async () => {
             'src/core/trust/sha256.ts',
             'src/core/trust/ledger.ts',
         ].map(codeOnly).join('\n');
-        const users = execSync(`grep -rln "crypto-js" src --include=*.ts --include=*.tsx || true`, { cwd: repoRoot })
-            .toString().trim().split('\n').filter(Boolean);
-        return { ok: !/crypto-js/.test(evidencePath), users };
+        // Comments are stripped first, because three files describe the old arrangement in prose and
+        // prose is not a dependency: the gate is "no code imports it", not "nobody may mention it".
+        const tsFiles = (dir, out = []) => {
+            for (const entry of fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
+                const rel = `${dir}/${entry.name}`;
+                if (entry.isDirectory()) tsFiles(rel, out);
+                else if (/\.(ts|tsx)$/.test(entry.name)) out.push(rel);
+            }
+            return out;
+        };
+        const users = tsFiles('src').filter((f) => /crypto-js/.test(codeOnly(f)));
+        // D13 turned this from an observation into a gate. It used to check four files and *print* the
+        // list of everything else that still imported the library, which is how a claim can sit green
+        // for weeks beside the one file it should have failed: `AuthContext.tsx` was in that printed
+        // list the whole time. Now the whole tree has to be clean, and so does the dependency itself,
+        // because a package.json entry invites the import straight back.
+        const pkg = fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8');
+        return {
+            ok: !/crypto-js/.test(evidencePath) && users.length === 0
+                && !/"crypto-js"|"@types\/crypto-js"/.test(pkg),
+            users,
+        };
     })();
     check(
-        'One SHA-256 implementation on the evidence path, not one per screen',
+        'One SHA-256 implementation in the app, and no second one a click away in package.json',
         singleHasher.ok,
+        `crypto-js importers: ${singleHasher.users.length === 0 ? 'none' : singleHasher.users.join(', ')}. ` +
         `The officer hashed exhibits with crypto-js while the ledger verified with WebCrypto - two implementations of the same promise, so a difference in either one would read as tampering. evidenceHasher now calls the trust layer's own function. Files still importing crypto-js: ${singleHasher.users.join(', ') || 'none'} (the session HMAC in AuthContext is a known, documented remainder and is not on the evidence path).`
     );
 
@@ -412,6 +432,151 @@ const main = async () => {
         'A record advertises a Merkle root only when an anchor actually covers it',
         fieldHonesty.ok,
         fieldHonesty.detail + ' Anchoring on every write keeps the unprotected window at one record in a browser-only build.'
+    );
+
+    // --------------------------------------------------------------------------- D6 / claim 28
+    //
+    // `persisted` used to mean `typeof window.localStorage !== 'undefined'`, and the IndexedDB tier
+    // existed in the file but was never chosen. Both halves are behavioural, so this claim runs the
+    // real selector instead of reading its source: the old probe wrote a value and never asked for it
+    // back, and no grep can tell that apart from a probe that does.
+    const trustStore = await freshImport(bundle('src/core/trust/store.ts', 'trust-store.mjs'));
+
+    const freshLocal = (seedMeta) => {
+        const map = new Map();
+        if (seedMeta) map.set('nyaya:ledger:v1:meta', JSON.stringify(seedMeta));
+        return {
+            getItem: (k) => (map.has(k) ? map.get(k) : null),
+            setItem: (k, v) => { map.set(k, v); },
+            removeItem: (k) => { map.delete(k); },
+            _map: map,
+        };
+    };
+    // Writes accepted, nothing kept, no error raised. Every browser in private mode, and the exact
+    // situation the receipt on the citizen's screen used to describe as "Saved to this device".
+    const lyingLocal = { getItem: () => null, setItem: () => { }, removeItem: () => { } };
+
+    const idbStub = (mode) => {
+        const dbs = new Map();
+        if (mode === 'legacy') dbs.set('nyaya-ledger', new Map([['records', new Map()]]));
+        const request = (produce) => {
+            const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+            queueMicrotask(() => {
+                try {
+                    req.result = produce();
+                    if (req.onsuccess) req.onsuccess({ target: { result: req.result } });
+                } catch (error) {
+                    if (req.onerror) req.onerror({ target: { error } });
+                }
+            });
+            return req;
+        };
+        const objectStore = (data) => ({
+            put: (value, key) => request(() => { data.set(key === undefined ? data.size : key, value); }),
+            get: (key) => request(() => data.get(key)),
+            getAll: () => request(() => Array.from(data.values())),
+            clear: () => request(() => { data.clear(); }),
+            delete: (key) => request(() => { data.delete(key); }),
+        });
+        const database = (stores) => ({
+            objectStoreNames: { contains: (name) => stores.has(name) },
+            createObjectStore: (name) => { stores.set(name, new Map()); return {}; },
+            transaction: (name) => {
+                const data = stores.get(name);
+                if (!data) throw new Error(`NotFoundError: no object store named ${name}`);
+                return { objectStore: () => objectStore(data) };
+            },
+        });
+        return {
+            dbs,
+            open: (name) => {
+                const req = { result: undefined, onsuccess: null, onerror: null, onupgradeneeded: null };
+                queueMicrotask(() => {
+                    if (mode === 'blocked') {
+                        if (req.onerror) req.onerror({ target: { error: new Error('blocked by policy') } });
+                        return;
+                    }
+                    let stores = dbs.get(name);
+                    const needsUpgrade = stores === undefined;
+                    if (!stores) { stores = new Map(); dbs.set(name, stores); }
+                    req.result = database(stores);
+                    if (needsUpgrade) {
+                        if (req.onupgradeneeded) req.onupgradeneeded({});
+                    }
+                    if (req.onsuccess) req.onsuccess({ target: { result: req.result } });
+                });
+                return req;
+            },
+        };
+    };
+
+    const driverChoice = await (async () => {
+        const keep = {
+            localStorage: Object.getOwnPropertyDescriptor(globalThis, 'localStorage'),
+            indexedDB: Object.getOwnPropertyDescriptor(globalThis, 'indexedDB'),
+        };
+        const set = (key, value) => {
+            if (value === undefined) delete globalThis[key];
+            else Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+        };
+        const restore = () => {
+            for (const key of ['localStorage', 'indexedDB']) {
+                if (keep[key]) Object.defineProperty(globalThis, key, keep[key]);
+                else delete globalThis[key];
+            }
+        };
+        const run = async (localStorage, indexedDB) => {
+            set('localStorage', localStorage);
+            set('indexedDB', indexedDB);
+            return await trustStore.defaultDriver();
+        };
+        try {
+            const privateMode = await run(lyingLocal, undefined);
+            const ordinary = await run(freshLocal(), idbStub('blocked'));
+            const bothAvailable = freshLocal();
+            const workingIdb = idbStub('default');
+            const preferred = await run(bothAvailable, workingIdb);
+            const withHistory = await run(
+                freshLocal({ version: 1, storeId: 'before-d6', headDigest: 'a'.repeat(64), recordCount: 7 }),
+                idbStub('default')
+            );
+            const legacyDb = await run(freshLocal(), idbStub('legacy'));
+            // Optional chaining everywhere below on purpose: a build that never constructs the
+            // IndexedDB driver has no database to inspect, and this claim must answer that with
+            // `CLAIM FAILS` plus a reason, not by taking the harness down with a TypeError.
+            const idbDbs = workingIdb.dbs.get('nyaya-ledger');
+            const probeStore = idbDbs ? idbDbs.get('persistence-probe') : undefined;
+            const journalStore = idbDbs ? idbDbs.get('records') : undefined;
+            return {
+                ok: privateMode.driver.name === 'memory' && privateMode.persisted === false
+                    && ordinary.driver.name === 'localStorage' && ordinary.persisted === true
+                    && preferred.driver.name === 'indexedDB' && preferred.persisted === true
+                    && withHistory.driver.name === 'localStorage'
+                    && legacyDb.driver.name === 'localStorage'
+                    && probeStore !== undefined && probeStore.size === 0
+                    && journalStore !== undefined && journalStore.size === 0,
+                detail: `private-mode storage -> ${privateMode.driver.name}/${privateMode.persisted}; `
+                    + `IDB refusing to open -> ${ordinary.driver.name}/${ordinary.persisted}; `
+                    + `both available -> ${preferred.driver.name}/${preferred.persisted}; `
+                    + `journal already in localStorage -> ${withHistory.driver.name}; `
+                    + `database predating the probe store -> ${legacyDb.driver.name}; `
+                    + `probe store left with ${probeStore ? probeStore.size : 'no store'} marker(s), `
+                    + `journal store ${journalStore ? `untouched (${journalStore.size} record(s))` : 'never opened'}`,
+            };
+        } finally {
+            // The harness's own storage shim has to come back exactly as it was: every claim after
+            // this one reads the journal the earlier claims wrote through it.
+            restore();
+        }
+    })();
+    check(
+        'The persistence flag is earned by a write and a read-back, in the store it describes',
+        driverChoice.ok,
+        driverChoice.detail +
+        ' | A store that accepts writes and discards them (Safari private mode) must land on memory/false, ' +
+        'IndexedDB is preferred only when it proves itself, and a device with history in localStorage is never ' +
+        'moved onto an empty store. The claim also fails if the probe leaves a marker behind or writes into the ' +
+        'journal - proving durability must not cost a record.'
     );
 
     console.log('\n=== E. Consistency of the ledger copies that survive in the tree ===');
@@ -970,6 +1135,65 @@ const main = async () => {
         offenders.length
             ? `found in: ${[...new Set(offenders)].slice(0, 6).join(' | ')}`
             : `Scanned the string and JSX literals of all ${reachable.size} files reachable from src/main.tsx (comments stripped first, so a disclaimer cannot read as a claim). \`initializeLedger\`/\`getBlockchain\`/\`BlockchainBlock\` are now initializeLedger/getLedgerEntries/LedgerEntry for the same reason: the names were the claim.`
+    );
+
+    // --------------------------------------------------------------------------- D16 / claim 29
+    //
+    // Group H above proves the *source* cannot render a mechanism claim. It scans `src/`, so the front
+    // door - the one document most readers open before they read a line of code, and the one that had
+    // been promising "AI & Blockchain" and a license that was never in the repository - was outside
+    // every gate in this project. So the README gets checked structurally: the sections it promises, the
+    // commands it tells a stranger to run, the routes it links to, and the vocabulary it is allowed.
+    const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
+    const readmeLines = readme.split('\n');
+    const readmeHeadings = readmeLines.filter((l) => /^## /.test(l)).map((l) => l.replace(/^##\s+/, '').trim());
+    const WANT_SECTIONS = ['What this is', 'What this is not', 'Trust model', 'Statutory anchors',
+        'Getting started', 'Quality gates', 'License'];
+    // Claims, not words. A file may say "there is no consensus and no peer network"; what it may not do
+    // is advertise a mechanism the code does not implement.
+    const NEVER_IN_README = ['blockchain', 'zero-knowledge', 'end-to-end encrypt', "india's first",
+        'court-grade', 'e-courts', 'mit license', 'hackathon', 'openai', 'verified & secure',
+        'potential tampering', 'cases analyzed', 'user satisfaction', 'courts connected',
+        'join thousands', '22 languages', 'npm install'];
+    const lowerReadme = readme.toLowerCase();
+    const readmeClaims = NEVER_IN_README.filter((w) => lowerReadme.includes(w));
+    // Words a denial is allowed to use, on the same rule group H applies to source strings: forbidding
+    // "quantum" outright would delete the sentence that says the app is not quantum-safe, which is the
+    // one sentence in the file that a reader most needs.
+    const DENIED_TERMS = ['quantum', 'tampering', 'unbreakable', 'immutable', 'post-quantum'];
+    const undenied = readmeLines
+        .filter((l) => DENIED_TERMS.some((w) => l.toLowerCase().includes(w)))
+        .filter((l) => !/\bnot\b|\bno\b|\bnever\b|\bwithout\b/i.test(l));
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+    const haveScripts = Object.keys(pkg.scripts || {});
+    const citedScripts = [...readme.matchAll(/npm run ([a-zA-Z0-9:_-]+)/g)].map((m) => m[1]);
+    const bogusScripts = citedScripts.filter((name) => !haveScripts.includes(name));
+    const citedTools = [...readme.matchAll(/node (tools\/[A-Za-z0-9._/-]+)/g)].map((m) => m[1]);
+    const missingTools = citedTools.filter((rel) => !fs.existsSync(path.join(repoRoot, rel)));
+    const appRoutes = fs.readFileSync(path.join(repoRoot, 'src/App.tsx'), 'utf8');
+    const citedRoutes = [...readme.matchAll(/`(\/(citizen|police|judge)\/([a-z-]+))`/g)].map((m) => m[1]);
+    const missingRoutes = citedRoutes.filter((route) => {
+        const parts = route.slice(1).split('/');
+        return !appRoutes.includes(`path="/${parts[0]}"`) || !appRoutes.includes(`path="${parts[1]}"`);
+    });
+    check(
+        'The README is a document the code can be checked against, not a brochure',
+        readmeHeadings.join('|') === WANT_SECTIONS.join('|')
+            && readme.includes('No license is currently declared')
+            && readme.includes('npm ci')
+            && readmeClaims.length === 0
+            && undenied.length === 0
+            && citedScripts.length >= 3 && bogusScripts.length === 0
+            && missingTools.length === 0
+            && citedRoutes.length >= 4 && missingRoutes.length === 0,
+        `sections [${readmeHeadings.join(' / ')}]; `
+        + `${citedScripts.length} npm run + ${citedTools.length} tool commands, all of which exist`
+        + `${bogusScripts.length ? ` EXCEPT ${bogusScripts.join(', ')}` : ''}`
+        + `${missingTools.length ? ` and missing: ${missingTools.join(', ')}` : ''}; `
+        + `${citedRoutes.length} persona routes cited, ${missingRoutes.length ? `not routed: ${missingRoutes.join(', ')}` : 'all routed in App.tsx'}; `
+        + `license sentence and \`npm ci\` ${readme.includes('No license is currently declared') && readme.includes('npm ci') ? 'present' : 'MISSING'}; `
+        + `advertised mechanisms: ${readmeClaims.length ? readmeClaims.join(', ') : 'none'}; `
+        + `denied terms outside a negation: ${undenied.length ? undenied.map((l) => l.trim().slice(0, 54)).join(' | ') : 'none'}`
     );
 
     console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);

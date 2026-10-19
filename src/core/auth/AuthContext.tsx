@@ -4,7 +4,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import CryptoJS from 'crypto-js';
 
 export type UserRole = 'CITIZEN' | 'POLICE' | 'JUDGE' | 'ADMIN' | null;
 
@@ -23,31 +22,104 @@ export interface UserProfile {
 // This prevents casual tampering but is NOT a complete security solution
 const INTEGRITY_SECRET = 'nyaya-v2-integrity-key-2025';
 
+/**
+ * Hex HMAC-SHA256 over the session payload, computed by the platform rather than by `crypto-js`.
+ *
+ * Why this file was the last holdout: the officer's exhibit hasher had already moved to WebCrypto,
+ * which left two SHA-256 implementations in one app that had to agree about every digest a human
+ * would ever compare. `core/trust/sha256.ts` states the rule - a pure-JS implementation with its own
+ * 64-bit length bookkeeping is not something to hang an evidentiary claim on - and a session
+ * signature is a claim, even a modest one.
+ *
+ * What this does NOT change: strength. The constant above is in the bundle, so anyone who can read
+ * the bundle can sign a session for any profile. "Casual tampering, not a security solution" was
+ * true of the old line and is true of this one; replacing the secret with something a client cannot
+ * forge is D12's decision and is deliberately not taken here.
+ *
+ * Byte-for-byte compatibility was the requirement, not a nicety - a signed session already in
+ * someone's localStorage must keep verifying, or a cleanup would log people out. HMAC's definition
+ * fixes the algorithm, and the two implementations were cross-checked against this secret at key
+ * lengths 27, 63, 64, 65 and 200: 64 and 65 straddle SHA-256's block size, where an implementation
+ * that skipped the spec's "hash the key when it is longer than the block" step would diverge. They
+ * agreed at every length, and `tests/auth_signature.test.ts` pins a golden signature produced by
+ * crypto-js 4.2.0 so the agreement survives the deletion of the package that produced it.
+ *
+ * One behaviour differs on purpose: `crypto.subtle` refuses a zero-length key with `DataError`,
+ * where crypto-js computed an HMAC with it. An empty `INTEGRITY_SECRET` now fails loudly at signing
+ * and fails closed at verification, which is the correct direction for a check to break in.
+ */
+const hmacHex = async (message: string): Promise<string> => {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) {
+        // Checked at call time, never at module load: a load-time throw in a module `App` imports is
+        // D3, and it used to blank every screen that reached it.
+        throw new Error('WebCrypto (crypto.subtle) is unavailable; a non-secure origin cannot sign a session.');
+    }
+    const key = await subtle.importKey(
+        'raw', new TextEncoder().encode(INTEGRITY_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    );
+    const signature = await subtle.sign('HMAC', key, new TextEncoder().encode(message));
+    return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
 // Sign user data with HMAC
-const signUserData = (user: UserProfile): string => {
-    const dataString = JSON.stringify(user);
-    const signature = CryptoJS.HmacSHA256(dataString, INTEGRITY_SECRET).toString();
+const signUserData = async (user: UserProfile): Promise<string> => {
+    const signature = await hmacHex(JSON.stringify(user));
     return JSON.stringify({ data: user, sig: signature });
 };
 
-// Verify and extract user data
-const verifyUserData = (stored: string): UserProfile | null => {
+/**
+ * Write the session. Awaiting the signature is the point: the sync version could report a session as
+ * saved from a write nobody had asked the platform to accept yet, which is the same category of
+ * promise the ledger's `persisted` flag used to make (D6).
+ *
+ * Failures are logged rather than thrown to the click handler because there is no error UI on this
+ * path: the in-memory session still works for this page and is gone on reload, and the alternative -
+ * an unhandled rejection inside `setTimeout` - is silence with worse odds of being noticed.
+ */
+const persistSession = async (profile: UserProfile): Promise<void> => {
     try {
-        const parsed = JSON.parse(stored);
-        if (!parsed.data || !parsed.sig) {
-            // Legacy unsigned data - invalidate session
-            console.warn('[Auth] Unsigned session detected - clearing for security');
-            return null;
-        }
-        const expectedSig = CryptoJS.HmacSHA256(JSON.stringify(parsed.data), INTEGRITY_SECRET).toString();
-        if (parsed.sig !== expectedSig) {
-            console.error('[Auth] Session integrity check FAILED - possible tampering detected');
-            return null;
-        }
-        return parsed.data as UserProfile;
+        localStorage.setItem('nyaya_pilot_user', await signUserData(profile));
+    } catch (err) {
+        console.error(
+            '[Auth] Session could not be signed - this login will not survive a reload:',
+            err instanceof Error ? err.message : err
+        );
+    }
+};
+
+// Verify and extract user data
+const verifyUserData = async (stored: string): Promise<UserProfile | null> => {
+    let parsed: { data?: UserProfile; sig?: string };
+    try {
+        parsed = JSON.parse(stored);
     } catch {
         return null;
     }
+    if (!parsed || !parsed.data || !parsed.sig) {
+        // Legacy unsigned data - invalidate session
+        console.warn('[Auth] Unsigned session detected - clearing for security');
+        return null;
+    }
+    let expectedSig: string;
+    try {
+        expectedSig = await hmacHex(JSON.stringify(parsed.data));
+    } catch (err) {
+        // "The check could not run" and "the signature does not match" are different findings, and
+        // collapsing them into one message is how a browser without WebCrypto ends up accusing the
+        // user of tampering with their own session. D18 forced the same distinction on the verifier
+        // screen for the same reason.
+        console.error('[Auth] Session integrity check could not be performed:', err instanceof Error ? err.message : err);
+        return null;
+    }
+    if (parsed.sig !== expectedSig) {
+        // The old wording was "possible tampering detected". What this can actually establish is a
+        // mismatch between a digest and the bytes next to it; anything harder than that is a
+        // conclusion about a person, from a key the person could have read out of the bundle.
+        console.error('[Auth] Session signature does not match the stored profile - session discarded');
+        return null;
+    }
+    return parsed.data as UserProfile;
 };
 
 interface AuthContextType {
@@ -71,18 +143,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isAuthenticated = user !== null && user.role !== null;
 
     // Secure Persistence with HMAC Verification
+    //
+    // `finally`, not a straight line: `isLoading` is what D25 holds the first paint on, so a throw
+    // anywhere in this restore - storage that refuses to be read, a payload that will not parse -
+    // must still release the flag, or the app is a spinner forever. Verification itself can no longer
+    // throw at the call site: it resolves `null` and logs which half failed.
     useEffect(() => {
-        const storedUser = localStorage.getItem('nyaya_pilot_user');
-        if (storedUser) {
-            const verifiedUser = verifyUserData(storedUser);
-            if (verifiedUser) {
-                setUser(verifiedUser);
-            } else {
-                // Tampering detected or legacy format - clear storage
-                localStorage.removeItem('nyaya_pilot_user');
+        const restore = async () => {
+            try {
+                const storedUser = localStorage.getItem('nyaya_pilot_user');
+                if (storedUser) {
+                    const verifiedUser = await verifyUserData(storedUser);
+                    if (verifiedUser) {
+                        setUser(verifiedUser);
+                    } else {
+                        // Signature mismatch or legacy format - clear storage
+                        localStorage.removeItem('nyaya_pilot_user');
+                    }
+                }
+            } finally {
+                setIsLoading(false);
             }
-        }
-        setIsLoading(false);
+        };
+        void restore();
     }, []);
 
     const login = (role: UserRole) => {
@@ -101,7 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     // Direct Google login - creates complete user profile in one atomic operation
-    const loginWithGoogle = (userData: { name: string; email?: string; avatar?: string }, role: UserRole = 'CITIZEN') => {
+    const loginWithGoogle = async (userData: { name: string; email?: string; avatar?: string }, role: UserRole = 'CITIZEN') => {
         setIsLoading(true);
 
         const finalProfile: UserProfile = {
@@ -113,12 +196,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Set user directly with full profile
         setUser(finalProfile);
-        // Persist immediately
-        localStorage.setItem('nyaya_pilot_user', signUserData(finalProfile));
+        // Persist immediately - awaited, so `isLoading` is not cleared until the signed session has
+        // actually been handed to storage. The context type declares `=> void`, so callers that fire
+        // this and navigate away are unchanged.
+        await persistSession(finalProfile);
         setIsLoading(false);
     };
 
-    const completeOnboarding = (details: Partial<UserProfile>) => {
+    const completeOnboarding = async (details: Partial<UserProfile>) => {
         if (!user) return;
 
         const finalProfile: UserProfile = {
@@ -128,8 +213,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         setUser(finalProfile);
-        // Store with HMAC signature to prevent tampering
-        localStorage.setItem('nyaya_pilot_user', signUserData(finalProfile));
+        // Store with HMAC signature so a hand-edited profile stops matching its own digest
+        await persistSession(finalProfile);
     };
 
     const logout = () => {

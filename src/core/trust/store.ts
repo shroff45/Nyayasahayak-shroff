@@ -7,17 +7,28 @@
  * accusation of tampering, which is worse than no feature at all. Everything in this module
  * exists to make the record outlive the page.
  *
- * Driver choice, stated plainly:
- *  - `localStorageDriver` is the default. Evidence records here are small JSON (hashes,
- *    custody metadata, signatures), and localStorage is synchronous, present everywhere, and
- *    survives reloads, restarts and offline use. It is also trivially inspectable by an
- *    auditor and testable without a browser.
- *  - `indexedDbDriver` is offered for deployments that keep large forensic artefacts beside the
- *    record. It is a thin wrapper over the same record shape; both are exercised by the same
- *    conformance test so they cannot drift.
- *  - `memoryDriver` is for tests and for non-browser contexts. It is NOT used at runtime
- *    except as the fallback when storage is unavailable, in which case the ledger reports
- *    `persisted: false` rather than pretending to have written.
+ * Driver choice, stated plainly - and every clause of it is answered by a probe, not by an
+ * assumption about which APIs a browser happens to expose:
+ *  - `indexedDbDriver` is preferred, because it is the only one of these stores that is not
+ *    capped at ~5 MB and the only one that can hold a forensic artefact beside its digest. It is
+ *    chosen only if opening it, creating it, and writing then reading back a probe record all
+ *    succeed.
+ *  - `localStorageDriver` is the fallback, and it keeps the journal when it already holds one -
+ *    see `defaultDriver`: a device that has been writing to localStorage does not get moved onto
+ *    an empty IndexedDB store, because "new history from today" would silently orphan every
+ *    exhibit anchored yesterday. That rule matters more than the preference above.
+ *  - `memoryDriver` is for tests and non-browser contexts, and the runtime fallback when nothing
+ *    persists. Its `probe()` returns false unconditionally: nothing written here outlives the
+ *    page, and `persisted: false` is the ledger saying so instead of pretending to have written.
+ *
+ * What `probe()` is, and what it is not: one write and one read-back, performed before the ledger
+ * reports `persisted: true`. It exists because `setItem` succeeding is not durability - Safari in
+ * private mode accepts every write and discards all of them at unload - and because IndexedDB
+ * resolves `open()` happily in contexts where a readwrite transaction is refused. Neither is a
+ * theoretical worry; both are what a courthouse kiosk with a locked-down profile actually does.
+ *
+ * The two storage-backed drivers are held to one contract by `tests/trust_ledger.test.ts`, so the
+ * fallback cannot drift from the primary.
  *
  * Append-only by construction: there is no update or delete. Replacing history is only possible
  * by discarding the store wholesale, which `verifyChain` detects through the head anchor
@@ -53,6 +64,18 @@ export interface JournalDriver {
     append(record: LedgerRecord, nextMeta: JournalMeta): Promise<void>;
     /** Only for tests and an explicit, operator-initiated wipe. */
     reset(): Promise<void>;
+    /**
+     * "If I write here, does the value come back?" One sentinel write, one read, one cleanup;
+     * resolves false rather than rejecting, because a store that cannot answer is a store the
+     * caller should not use. `Ledger.status().persisted` is this answer and nothing else - it is
+     * deliberately not `typeof storage !== 'undefined'`, and not "the append did not throw".
+     *
+     * A caller that supplies its own `driver` to `createLedger` gets its own probe result, not the
+     * one belonging to whichever store the browser happened to offer. That distinction is the
+     * second half of this change: passing `memoryDriver()` in a browser used to report
+     * `persisted: true`, because the flag described the environment rather than the store in use.
+     */
+    probe(): Promise<boolean>;
 }
 
 export const JOURNAL_VERSION = 1;
@@ -98,6 +121,11 @@ export const memoryDriver = (
             writes++;
         },
         async reset() { meta = null; records = []; },
+        // Never "unproven": for the in-memory driver the answer is known. A journal that lives in a
+        // module's closure cannot survive the reload that ends the session, so a probe would only be
+        // a slower way of returning false - and `false` is the value the screens phrase as
+        // "Session only - will not survive page reload".
+        async probe() { return false; },
     };
 };
 
@@ -127,6 +155,12 @@ export const localStorageDriver = (storage: WebStorage, namespace = 'nyaya:ledge
         const raw = storage.getItem(metaKey);
         return raw ? (JSON.parse(raw) as JournalMeta) : null;
     };
+
+    // Outside the namespace on purpose: `loadRecords`/`loadMeta` read fixed keys, so a sentinel
+    // parked here can never be mistaken for journal state, and a wipe of the namespace cannot
+    // strand it. The value varies per probe so a leftover marker from an earlier run cannot make
+    // this return true for data the store did not just accept.
+    const probeKey = namespace + ':probe';
 
     return {
         name: 'localStorage',
@@ -164,6 +198,23 @@ export const localStorageDriver = (storage: WebStorage, namespace = 'nyaya:ledge
             storage.removeItem(recordsKey);
             storage.removeItem(metaKey);
         },
+        async probe() {
+            const token = `${Date.now()}:${Math.random()}`;
+            try {
+                storage.setItem(probeKey, token);
+                const readBack = storage.getItem(probeKey);
+                storage.removeItem(probeKey);
+                // `setItem` not throwing is the weak claim; the strong one is that the value came
+                // back. Safari's private mode satisfies the first and fails the second, and a
+                // ledger that reports `persisted: true` on the strength of the first has told a
+                // citizen their complaint is on disk when the browser is about to discard it.
+                return readBack === token && storage.getItem(probeKey) === null;
+            } catch {
+                // Quota exceeded, storage disabled by policy, a profile that denies access: all of
+                // them mean "do not pick me", not "throw at the user during boot".
+                return false;
+            }
+        },
     };
 };
 
@@ -186,6 +237,8 @@ export interface IDBObjectStoreLike {
     get(key: number): IDBRequestLike;
     getAll(): IDBRequestLike;
     clear(): IDBRequestLike;
+    /** Named because the persistence probe has to undo itself. */
+    delete(key: number): IDBRequestLike;
 }
 export interface IDBDatabaseLike {
     createObjectStore(name: string, options?: { keyPath?: string }): unknown;
@@ -206,13 +259,25 @@ const idbRequest = <T,>(request: IDBRequestLike): Promise<T> =>
 export const indexedDbDriver = (
     indexedDB: IDBLike,
     dbName = 'nyaya-ledger',
-    storeName = 'records'
+    storeName = 'records',
+    probeStoreName = 'persistence-probe'
 ): JournalDriver => {
+    // A second object store, created in the same `version: 1` upgrade, exists for one reason: the
+    // probe needs to write and read back without entering the journal. In `records` it would be
+    // swept up by `readAll` (a `getAll()` over that store) and would break the append rule that
+    // `record.index` must equal `meta.recordCount + 1` - i.e. proving durability would corrupt
+    // the very chain it is supposed to protect.
+    //
+    // An install whose database predates this store gets `transaction(probeStoreName)` refused with
+    // a NotFoundError, the probe resolves false, and the ledger falls back to localStorage, which
+    // is where that device's journal already is. That is the safe direction for the failure: the
+    // store that cannot prove itself is not used, rather than being trusted on request.
     const openDb = async (): Promise<IDBDatabaseLike> => {
         const req = indexedDB.open(dbName, 1);
         req.onupgradeneeded = () => {
             const db = req.result as IDBDatabaseLike;
             if (!db.objectStoreNames.contains(storeName)) db.createObjectStore(storeName);
+            if (!db.objectStoreNames.contains(probeStoreName)) db.createObjectStore(probeStoreName);
         };
         return await new Promise<IDBDatabaseLike>((resolve, reject) => {
             req.onsuccess = (ev) => resolve(ev.target.result as IDBDatabaseLike);
@@ -270,24 +335,65 @@ export const indexedDbDriver = (
             const tx = db.transaction(storeName, 'readwrite');
             await idbRequest(tx.objectStore(storeName).clear());
         },
+        async probe() {
+            const PROBE_KEY = 0;
+            const token = `${Date.now()}:${Math.random()}`;
+            try {
+                const db = await openDb();
+                const store = db.transaction(probeStoreName, 'readwrite').objectStore(probeStoreName);
+                await idbRequest(store.put(token, PROBE_KEY));
+                const readBack = await idbRequest<unknown>(store.get(PROBE_KEY));
+                await idbRequest(store.delete(PROBE_KEY));
+                // Three conditions, not one. `readBack === token` proves the bytes round-tripped.
+                // The second `get` proving `undefined` proves the cleanup was accepted too, so a
+                // probe that leaves a marker behind cannot be mistaken for a durable store.
+                const after = await idbRequest<unknown>(store.get(PROBE_KEY));
+                return readBack === token && after === undefined;
+            } catch {
+                // Refused open (private profile, blocked storage access, another tab mid-upgrade),
+                // refused transaction, or a store that does not exist: same answer, and the caller
+                // moves on to a store that can answer for itself.
+                return false;
+            }
+        },
     };
 };
 
 /**
- * Pick the strongest driver actually available. Returns the driver *and* whether it persists,
- * so callers can tell the user "this session is not being recorded" instead of lying.
+ * Pick the strongest driver that can *prove* it persists. Async, because the proof is a write and
+ * a read-back, and a synchronous answer to that question is the answer this module spent a
+ * release removing: `if (window.indexedDB) return true` is always true, which is how a `persisted`
+ * flag came to describe an API's presence instead of the durability of a record.
+ *
+ * Returns `{ driver, persisted }`. The shape is unchanged on purpose - `Ledger.status()`, the
+ * officer's locker and the citizen's receipt all read `persisted` - only its meaning got stricter.
  */
-export const defaultDriver = (): { driver: JournalDriver; persisted: boolean } => {
+export const defaultDriver = async (): Promise<{ driver: JournalDriver; persisted: boolean }> => {
+    const idb = (globalThis as { indexedDB?: IDBLike }).indexedDB;
     const storage = (globalThis as { localStorage?: WebStorage }).localStorage;
-    if (storage) {
+    const local = storage ? localStorageDriver(storage) : null;
+
+    /** Does localStorage already hold this device's journal? A read, never a write. */
+    const holdsJournal = async (driver: JournalDriver): Promise<boolean> => {
         try {
-            const probe = 'nyaya:probe';
-            storage.setItem(probe, '1');
-            storage.removeItem(probe);
-            return { driver: localStorageDriver(storage), persisted: true };
+            return (await driver.readMeta()) !== null || (await driver.readAll()).length > 0;
         } catch {
-            // Safari private mode and storage-disabled kiosk builds land here.
+            // Unreadable is not "empty": treating a corrupt or blocked store as vacant is how a
+            // driver switch silently starts a fresh chain over history that still exists.
+            return true;
         }
+    };
+
+    const candidates: JournalDriver[] = [];
+    if (idb) {
+        const idbDriver = indexedDbDriver(idb);
+        const orphanRisk = local ? await holdsJournal(local) : false;
+        if (!orphanRisk) candidates.push(idbDriver);
+    }
+    if (local) candidates.push(local);
+
+    for (const driver of candidates) {
+        if (await driver.probe()) return { driver, persisted: true };
     }
     return { driver: memoryDriver(), persisted: false };
 };

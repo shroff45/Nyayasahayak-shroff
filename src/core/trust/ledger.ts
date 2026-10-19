@@ -552,8 +552,20 @@ export const verifyCertificate = async (
  * the same device keeps signing with the same key across reloads.
  */
 export const createLedger = async (config: LedgerConfig = {}): Promise<Ledger> => {
-    const { driver: defaultStoreDriver, persisted } = defaultDriver();
-    const driver = config.driver ?? defaultStoreDriver;
+    // `persisted` has to describe the store actually in use, not the environment the code happens
+    // to be running in. When a caller supplies its own driver, the browser's answer used to be
+    // inherited instead: `createLedger({ driver: memoryDriver() })` on a desktop reported
+    // `persisted: true`, which is the same category of lie as claiming a write succeeded because
+    // `indexedDB` exists - a truthful flag that was measured against the wrong subject.
+    let driver = config.driver;
+    let persisted: boolean;
+    if (driver) {
+        persisted = await driver.probe();
+    } else {
+        const chosen = await defaultDriver();
+        driver = chosen.driver;
+        persisted = chosen.persisted;
+    }
     let identity = config.identity;
     if (!identity) {
         if (!config.identityVault) {
