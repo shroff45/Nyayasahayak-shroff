@@ -403,7 +403,7 @@ const main = async () => {
     check(
         'merkleRoot is a real Merkle root over multiple leaves, with a proof per leaf',
         batch.ok,
-        batch.detail + ' The old field was SHA256(JSON.stringify(payload)) - one leaf, no tree, so no inclusion proof could exist; in the nationals copy it was literally `merkleRoot: "" // Optional implementation`.'
+        batch.detail + ' The old field was SHA256(JSON.stringify(payload)) - one leaf, no tree, so no inclusion proof could exist; the nationals copy - deleted with the subtree - had it literally as `merkleRoot: "" // Optional implementation`, which is the strongest form of the defect.'
     );
 
     const fieldHonesty = await (async () => {
@@ -591,7 +591,7 @@ const main = async () => {
             }
             return ledgerFiles.length === 1 && formats.size === 0;
         })(),
-        `${ledgerFiles.length} copy/copies under src/: ${ledgerFiles.join(', ') || 'none'}. The audit found three, each with its own in-memory array and hash format, so a block anchored by one could never be matched by a verifier reading the other. The class-based duplicate under features/nationals is deleted and its two importers now use the façade.`
+        `${ledgerFiles.length} copy/copies under src/: ${ledgerFiles.join(', ') || 'none'}. The audit found three, each with its own in-memory array and hash format, so a block anchored by one could never be matched by a verifier reading the other. The class-based duplicate that used to live under src/features/nationals/ is gone with the rest of that subtree, and its importers read the facade.`
     );
 
     const reachability = await (async () => {
@@ -605,7 +605,7 @@ const main = async () => {
     check(
         'Every ledger copy is actually reachable from the app',
         reachability.ok,
-        'A ledger module nobody imports keeps the claims alive for a reviewer while the running app writes elsewhere - that is how the nationals copy survived, reachable from two citizen screens and invisible to the judge. This check fails if such an orphan reappears. ' + reachability.detail
+        'A ledger module nobody imports keeps the claims alive for a reviewer while the running app writes elsewhere - that is how the nationals copy survived for a whole release - reachable from two citizen screens, invisible to the judge - until the subtree was deleted. This check fails if such an orphan reappears. ' + reachability.detail
     );
 
 
@@ -960,11 +960,11 @@ const main = async () => {
     );
 
     const DIGEST_API = /quantumHash|generateQuantumFingerprint|QuantumFingerprintResult|anomalyDetector/;
-    const digestOffenders = walkTs('src')
-        // The nationals island keeps its own private copy of the old type; it dies with the purge
-        // (docs/PLAN_4a.md). Excluding it is stated here rather than quietly shrinking the scan.
-        .filter((f) => !f.startsWith('src/features/nationals/'))
-        .filter((f) => DIGEST_API.test(codeOnly(f)));
+    // No exemptions on this scan, which is the point: it used to skip `src/features/nationals/`, a
+    // directory-sized exception written as though the dead copy were permanent. The purge deletes what
+    // was skipped, so the digest-API sweep now covers every file under `src/` - if a banned mechanism
+    // name comes back anywhere, including inside a fresh orphan, the scan sees it.
+    const digestOffenders = walkTs('src').filter((f) => DIGEST_API.test(codeOnly(f)));
     const lookup = await freshImport(bundleTs('src/shared/utils/integrityLookup.ts', 'integrity-lookup.mjs'));
     const sha = await freshImport(bundleTs('src/core/trust/sha256.ts', 'sha256-module.mjs'));
     // The record is shaped the way the Evidence Locker writes it (`sha256: hashResult.hash.toUpperCase()`,

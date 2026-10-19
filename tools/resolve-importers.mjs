@@ -7,8 +7,12 @@
  *
  *   - `@core`, `@personas`, `@shared` and `@types` are aliases, so a grep for a relative path misses
  *     every file that uses them (11 in src/, all of them live).
- *   - two different files are named `core/types.ts` (`src/core/types.ts` and
- *     `src/features/nationals/core/types.ts`), and a path-suffix grep merges them into one block.
+ *   - duplicated basenames are the norm here, and a path-suffix grep merges same-named files into
+ *     one block. Today that is two `JudgeDashboard.tsx` (`src/components/`, `src/modules/judge/`)
+ *     and two `DraftJudgmentPanel.tsx`; when this bullet was written it was two `core/types.ts`
+ *     (`src/core/types.ts`, `src/features/nationals/core/types.ts` - the second is now deleted, and
+ *     it was 21-importer-large, so the merge produced a census nobody could reproduce). The trap
+ *     does not retire with the file that illustrated it, so `--model` takes a full path.
  *   - a specifier like `'../types'` resolves relative to *its own directory*, so the same text names
  *     four different modules depending on where the line sits.
  *   - `React.lazy(() => import('./x'))` is a real dependency edge and plain `from`-pattern greps
@@ -17,7 +21,7 @@
  * So: resolve, then count. This walks the graph the way Vite and tsc do - aliases from the config
  * files, relative to the importing file, extension-completed - and separates *referencing* a module
  * from *reaching* it, because on this base those are very different numbers. Reachability is a BFS
- * from `src/main.tsx`; `tsc --noEmit` typechecks all 229 files either way, which is why deleting a
+ * from `src/main.tsx`; `tsc --noEmit` typechecks every file in `src` either way, which is why deleting a
  * type without deleting the dead files that name it turns the gate red on code nobody runs.
  *
  * The rule this tool exists to enforce: resolution is authoritative; grep is a candidate-finder.

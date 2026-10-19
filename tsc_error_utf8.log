@@ -1,4 +1,0 @@
-﻿src/features/nationals/modules/citizen/CitizenDashboard.tsx(2,43): error TS6133: 'AlertTriangle' is declared but its value is never read.
-src/features/nationals/modules/citizen/RightsAssistant.tsx(2,16): error TS6133: 'Sparkles' is declared but its value is never read.
-src/features/nationals/modules/citizen/VoiceFilingInterface.tsx(6,60): error TS6133: 'LogOut' is declared but its value is never read.
-src/features/nationals/modules/citizen/VoiceFilingInterface.tsx(13,11): error TS6133: 'logout' is declared but its value is never read.

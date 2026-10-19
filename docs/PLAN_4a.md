@@ -43,31 +43,59 @@ Baseline at the time of writing, on `arena/09a197cb-nyayasahayak-shroff` after D
 | unresolved first-party specifiers | 0 |
 | largest unreachable island | `src/features/nationals/` — 50 files, 12,263 lines |
 
-## 2. The four shapes
+After the nationals purge (PR #7), recomputed the same way with `node tools/resolve-importers.mjs`:
+
+| | |
+|---|---|
+| files under `src/` | 171 (42,813 lines) |
+| reachable from `src/main.tsx` | 124 |
+| unreachable | 47 (6,674 lines, **15.6 %** of `src/`, down from 34.7 %) |
+| unresolved first-party specifiers | 0 |
+| largest unreachable island | `src/features/main/` - 13 files, 2,468 lines, inside a directory that is 32 files *live* |
+
+Both blocks stay: the first is the baseline this plan was written against, and quietly restating
+history as the current number is how a plan stops being falsifiable.
+
+## 2. The three shapes
 
 | file | shape | importers | live | naming `Case` | live namers |
 |---|---|---|---|---|---|
-| `src/types.ts` | **golden** — 19 fields, several required | 11 | 5 | 7 | 3 |
+| `src/types.ts` | **golden** — 19 fields, several required | 10 | 5 | 6 | 3 |
 | `src/core/types.ts` | strict subset, missing 6 golden fields (4 required: `adjournmentsCount`, `incidentDate`, `isZeroFir`, `applicableLaw`; 2 optional: `judgeId?`, `zeroFirTransferStatus?`) | 7 | **0** | 3 | 0 |
-| `src/features/main/types.ts` | legacy intake — `caseNumber`, `petitioner`, `invokedActs`, `title`, `complexityScore`, `pii` | 15 | 12 | 9 | **8** ← the migration bulk |
-| `src/features/nationals/core/types.ts` | union-shaped, nearly all optional, both spellings of everything | 21 | 4 | 9 | 1 |
+| `src/features/main/types.ts` | legacy intake — `caseNumber`, `petitioner`, `invokedActs`, `title`, `complexityScore`, `pii` | 14 | 12 | 9 | **8** ← the migration bulk |
 
-The set that decides your commit boundaries is the union of the four **unreachable** namer lists:
-**16 files**. Get it with
+Rows re-measured after 4(purge); the `src/core/types.ts` row is unchanged because its importers were never in the deleted subtree.
+
+The set that decides your commit boundaries is the union of the three **unreachable** namer lists:
+**7 files**, down from 16 the moment the nationals subtree was deleted. Get it with
 
 ```
-for m in src/types.ts src/core/types.ts src/features/main/types.ts src/features/nationals/core/types.ts; do
+for m in src/types.ts src/core/types.ts src/features/main/types.ts; do
   node tools/resolve-importers.mjs --model $m --symbol Case \
     | awk '/unreachable - each/{f=1;next} f&&/^    /{print $1}'
 done | sort -u
 ```
 
-That is not a number to argue with and it is not a number to keep: it was 17 when §8 of
-`PROJECT_KNOWLEDGE_BASE.md` first recorded it, and it fell to 16 when PR #4 deleted
-`src/features/nationals/components/DocumentAnalysis.tsx`. A directory-based listing misses 2 of the 16
+That is not a number to argue with and it is not a number to keep. Its history is the argument for
+re-running it instead of remembering it: 17 when §8 of `PROJECT_KNOWLEDGE_BASE.md` first recorded
+the set, 16 after PR #4 deleted `src/features/nationals/components/DocumentAnalysis.tsx`, and 7
+after the purge deleted the subtree. A directory-based listing missed 2 of the 16
 (`src/features/nationals/constants/mockData.ts`, 7 `Case` literal constructions, and
-`src/features/nationals/modules/citizen/VoiceFilingInterface.tsx`, 3) because they sit in directories
-whose *other* files are live.
+`src/features/nationals/modules/citizen/VoiceFilingInterface.tsx`, 3) because they sat inside
+directories whose *other* files were live - which is exactly why the census is taken with
+`--model` and not with `grep -r`.
+
+The 7 that survive are the entire scope of this block:
+
+```
+src/components/CaseDetailsPanel.tsx
+src/components/CaseQueue.tsx
+src/components/JudgeDashboard.tsx
+src/features/main/MainApp.tsx
+src/modules/judge/JudgeDashboard.tsx
+src/modules/judge/features/CaseTriage.tsx
+src/personas/judge/components/DraftJudgmentPanel.tsx
+```
 
 ## 3. The rules for this block
 
@@ -81,11 +109,16 @@ whose *other* files are live.
    converts *workspace state*, not a journal record) and 2 orphans. `applicableLawFor` is exported
    only from it (`:22`) and imported only by unreachable files — so if the purge deletes those, the
    export becomes dead in the same commit and must go with them, not in a follow-up.
-4. **The nationals subtree dies in the purge (4(purge)), not here.** 4(a) does not migrate
-   `src/features/nationals/core/types.ts`; it stops pretending that file is one of the shapes that has
-   to be reconciled. Its 4 live importers are what the purge deletes. This is a scope decision, not an
-   oversight: reconciling a near-copy of `features/main` and then deleting it is work the reader cannot
-   see and the diff cannot justify.
+4. **Discharged as written: the nationals subtree died in the purge (4(purge)), not here** (PR #7).
+   4(a) never migrated `src/features/nationals/core/types.ts` and never reconciled it; the file went
+   with its directory, which is what this rule asked for. One number in the original wording was
+   wrong, and the correction is the lesson rather than the detail: the subtree held **6** live
+   files, not 4, and all six hung off a single edge - `App.tsx`'s
+   `React.lazy(() => import('./features/nationals/modules/judge/JudgeDashboard'))`. A grep for
+   importers outside the directory returns 1, because the other five were reached transitively; only
+   the resolved graph shows that deleting that one line is the whole job. Scope decision, not
+   oversight: reconciling a near-copy of `features/main` and then deleting it is work the reader
+   cannot see and the diff cannot justify.
 5. **Journal rows are heterogeneous and `readCase` is the only reader.** `src/shared/utils/ledgerRecords.ts`
    derives `incidentDate` as `data.incidentDate ?? data.filingDate` and deliberately stops there — no
    `today()` fallback — because that date decides whether the BNSS s.176(3) videography mandate and
@@ -98,11 +131,19 @@ whose *other* files are live.
    be written against "the journal has no cases in it". Check with
    `node tools/ledger_repro.cjs` (group F renders the pages on an empty store on purpose; that fixture
    is not a licence to assume emptiness in the app).
-7. **The twin trap.** Four files are named `DraftJudgmentPanel.tsx` (`src/components/`,
-   `src/features/nationals/components/`, `src/features/main/components/`,
-   `src/personas/judge/components/`); only `src/components/` is routed, and it is the terminal consumer
-   of `toGoldenCase(selectedCase)`. Name the path in every edit and in the PR body. Same name, four
-   fates: one live, one dead-with-its-island, two dead.
+7. **The twin trap, including how this document mis-stated it.** Two files are named
+   `DraftJudgmentPanel.tsx`: `src/components/` (routed, and the terminal consumer of
+   `toGoldenCase(selectedCase)`) and `src/personas/judge/components/` (unreachable, one of the 7
+   above). Across all of git history the name has **three** paths, not the four this rule claimed:
+   `src/components/`, `src/personas/judge/components/`, and `src/features/nationals/components/`
+   (deleted by 4(purge)). `src/features/main/components/DraftJudgmentPanel.tsx` never existed - the
+   4 was a `VoiceFilingInterface.tsx`-shaped fact (three copies, all now gone: two deleted by name,
+   one with its directory) copied onto a second filename without listing that filename. The wrong
+   number stays visible here on purpose, because the fix is not the correction but the procedure:
+   before editing a duplicated basename, `git ls-files | grep <name>` for the tree and
+   `git log --all --name-only --format= | sort -u | grep <name>` for the history you are about to
+   narrate. A count is a fact about one snapshot; prose about counts starts rotting in the commit
+   that makes it true.
 
 ## 4. Sequence
 
@@ -124,13 +165,15 @@ Each step is a commit, each commit keeps all four gates green (tsc 0 · `npm tes
   invokedActs`) so the fallbacks live in one file with one test. Note the trap in that list:
   `readCase`'s `filingDate` fallback is not the same as the adapter's, and the two must not be merged
   by a refactor that looks like tidying.
-- **4(a)-v — leave `src/features/nationals/core/types.ts` alone** and record in the KB that 4(a)
-  closed on three shapes with the fourth scheduled for deletion. Do not let the diff grow to cover it.
+- **4(a)-v — satisfied by PR #7.** The fourth shape was deleted rather than migrated, and the KB
+  records it. Nothing in this block should grow to cover a file that no longer exists; if a review
+  note asks why `src/features/nationals/core/types.ts` is missing from the diff, the answer is that
+  4(purge) arrived first, exactly as this plan scheduled.
 
 ## 5. What "done" means
 
 `--model` reports 0 live namers for `src/features/main/types.ts` and `src/core/types.ts`; the four
-files above are three shapes; `listCases` consumers and `EvidenceLocker` read the same object type;
+files above are the whole census; `listCases` consumers and `EvidenceLocker` read the same object type;
 `node tools/ledger_repro.cjs` still ends at the count its header claims, with any claim rewritten to
 match what became true (a claim that had to be *weakened* to pass is a regression, and says so in its
 own text); and the census line for unreachable files goes **down**, never up. If 4(a) ends with more
