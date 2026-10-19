@@ -46,7 +46,10 @@ const DraftJudgmentPanel = React.lazy(() => import('./components/DraftJudgmentPa
 const AdjournmentRiskPanel = React.lazy(() => import('./components/AdjournmentRiskPanel'));
 const NyayaChitra = React.lazy(() => import('./components/NyayaChitra'));
 
-// Citizen-specific Components (VoiceFilingInterface used directly in citizen routes)
+// Citizen-specific Components. Voice filing is a mode inside the intake form itself - see the
+// SpeechRecognition setup in CitizenComplaint.tsx - not a separate screen. Three standalone
+// VoiceFilingInterface files existed in the tree; none of them was ever routed, and this commit
+// deletes them, so a reader who comes here looking for one should stop.
 const CitizenHomePage = React.lazy(() => import('./personas/citizen/pages/CitizenHome'));
 const CaseTrackPage = React.lazy(() => import('./personas/citizen/pages/CaseTrack'));
 const CitizenTimelinePage = React.lazy(() => import('./personas/citizen/pages/CitizenTimeline'));
@@ -78,9 +81,6 @@ const CaseQueuePage = React.lazy(() => import('./personas/judge/pages/CaseQueueP
 const SmartBailPage = React.lazy(() => import('./personas/judge/pages/SmartBailPage'));
 const OrdersHistoryPage = React.lazy(() => import('./personas/judge/pages/OrdersHistory'));
 const VirtualMootCourtPage = React.lazy(() => import('./personas/judge/pages/VirtualMootCourt'));
-
-// Enhanced Judge Dashboard (Nationals - with Sovereign Badge, Smart Query, Vipaksh)
-const EnhancedJudgeDashboard = React.lazy(() => import('./features/nationals/modules/judge/JudgeDashboard'));
 
 // Shared Components (Chain of Custody)
 const ProfileSettings = React.lazy(() => import('./shared/pages/ProfileSettings'));
@@ -328,8 +328,9 @@ const NyayaChitraWrapper: React.FC = () => {
     );
 };
 
-// Note: VoiceFilingWrapper removed - Police FIR now uses SmartFIRPage
-// Citizen voice filing uses VoiceFilingInterface directly in citizen routes
+// Note: VoiceFilingWrapper is gone and the police FIR route uses SmartFIRPage. The citizen intake
+// owns its own voice mode. Comments here used to describe screens that the router never mounted,
+// which is how a dead subtree stays alive for a reader long after it stopped being reachable.
 
 // ================== APP COMPONENT ==================
 const App: React.FC = () => {
@@ -453,7 +454,10 @@ const App: React.FC = () => {
                                 <Route path="queue" element={<React.Suspense fallback={<LoadingFallback />}><CaseQueuePage /></React.Suspense>} />
                                 <Route path="triage" element={<CaseTriageWrapper />} />
                                 <Route path="draft" element={<DraftJudgmentWrapper />} />
-                                <Route path="dashboard" element={<React.Suspense fallback={<LoadingFallback />}><EnhancedJudgeDashboard /></React.Suspense>} />
+                                {/* Was the nationals "Enhanced" dashboard (Sovereign Badge, Smart Query, Vipaksh). It
+                                    is deleted with the subtree; the URL outlived the screen, so it redirects to the
+                                    judge board the same way /judge/home does. */}
+                                <Route path="dashboard" element={<Navigate to="/judge/board" replace />} />
                                 <Route path="risk" element={<AdjournmentRiskWrapper />} />
                                 <Route path="mapper" element={<CaseMapperWrapper />} />
                                 <Route path="timeline" element={<JusticeTimelineWrapper />} />

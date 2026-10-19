@@ -84,9 +84,12 @@ export interface SmartBailContract {
     complianceScore: number;
     refundEligible: boolean;
     /**
-     * The three fields below existed only in the duplicate model under `features/nationals`,
-     * which is why two screens could not agree on what a contract is. They are now part of the
-     * single shape the ledger writes, so no cast is needed at either boundary.
+     * The three fields below existed only in a duplicate model under `features/nationals`, which is
+     * why two screens could not agree on what a contract is. That duplicate is gone now - deleted
+     * with the subtree in the nationals purge, without this type being touched - and these three
+     * fields stay, because they are part of the single shape the ledger writes and no cast is needed
+     * at either boundary. If you are here from `docs/PLAN_4a.md`: this comment is the whole residue
+     * of the fourth shape, and deleting it is not part of 4(a).
      */
     creationDate: string;
     releaseConditions: { courtDates: string[]; jurisdiction: string };
