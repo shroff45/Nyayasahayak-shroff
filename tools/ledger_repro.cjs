@@ -324,13 +324,33 @@ const main = async () => {
             'src/core/trust/sha256.ts',
             'src/core/trust/ledger.ts',
         ].map(codeOnly).join('\n');
-        const users = execSync(`grep -rln "crypto-js" src --include=*.ts --include=*.tsx || true`, { cwd: repoRoot })
-            .toString().trim().split('\n').filter(Boolean);
-        return { ok: !/crypto-js/.test(evidencePath), users };
+        // Comments are stripped first, because three files describe the old arrangement in prose and
+        // prose is not a dependency: the gate is "no code imports it", not "nobody may mention it".
+        const tsFiles = (dir, out = []) => {
+            for (const entry of fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
+                const rel = `${dir}/${entry.name}`;
+                if (entry.isDirectory()) tsFiles(rel, out);
+                else if (/\.(ts|tsx)$/.test(entry.name)) out.push(rel);
+            }
+            return out;
+        };
+        const users = tsFiles('src').filter((f) => /crypto-js/.test(codeOnly(f)));
+        // D13 turned this from an observation into a gate. It used to check four files and *print* the
+        // list of everything else that still imported the library, which is how a claim can sit green
+        // for weeks beside the one file it should have failed: `AuthContext.tsx` was in that printed
+        // list the whole time. Now the whole tree has to be clean, and so does the dependency itself,
+        // because a package.json entry invites the import straight back.
+        const pkg = fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8');
+        return {
+            ok: !/crypto-js/.test(evidencePath) && users.length === 0
+                && !/"crypto-js"|"@types\/crypto-js"/.test(pkg),
+            users,
+        };
     })();
     check(
-        'One SHA-256 implementation on the evidence path, not one per screen',
+        'One SHA-256 implementation in the app, and no second one a click away in package.json',
         singleHasher.ok,
+        `crypto-js importers: ${singleHasher.users.length === 0 ? 'none' : singleHasher.users.join(', ')}. ` +
         `The officer hashed exhibits with crypto-js while the ledger verified with WebCrypto - two implementations of the same promise, so a difference in either one would read as tampering. evidenceHasher now calls the trust layer's own function. Files still importing crypto-js: ${singleHasher.users.join(', ') || 'none'} (the session HMAC in AuthContext is a known, documented remainder and is not on the evidence path).`
     );
 

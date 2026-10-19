@@ -10,10 +10,16 @@
  * same function in `src/core/trust/sha256.ts`, which is native `crypto.subtle` rather than a JS
  * implementation, so a 200 MB CCTV clip takes seconds instead of minutes on a district-court laptop.
  *
- * `src/core/auth/AuthContext.tsx` still imports crypto-js for its session HMAC. That is deliberate
- * and not oversight: converting it to WebCrypto HMAC makes the auth context async, which ripples
- * into every consumer, and its key is a constant in the bundle either way - it deters someone
- * editing their own localStorage, nothing more. Deserves its own block, not a side trip.
+ * The second half of that sentence - `AuthContext.tsx`'s session HMAC - is now also WebCrypto, done
+ * as its own block rather than as a side trip, as recommended here. Two of the three reasons in the
+ * paragraph above turned out to be overstated, and one was right: the async change stayed inside that
+ * file, because `signUserData` and `verifyUserData` were module-local and the context declares both
+ * writers as `=> void`, so no consumer had to learn about promises; and `crypto.subtle` refuses a
+ * zero-length key where crypto-js accepted one, which turns an unset secret from a silent degenerate
+ * signature into a loud failure. What was right is the last clause - the key is a constant in the
+ * bundle either way, so this is tamper-*evidence* against someone editing their own storage, not
+ * security against anybody else. `INTEGRITY_SECRET` was deliberately not touched while doing it: that
+ * is a policy decision, not a dependency cleanup.
  */
 import { sha256OfFile } from '../trust/sha256.ts';
 
