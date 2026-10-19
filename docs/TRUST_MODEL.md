@@ -69,8 +69,12 @@ a key nobody vouches for is a self-assessment, and `verifyRecord` says so rather
    soundness/completeness arguments. None exist and none are needed; the label was decorative.
 6. **Not custody of the physical object.** A hash of bytes says nothing about where the phone, knife
    or DVD came from, who held it, or whether it was in the room. That is what a BSA s.63(4) Part A
-   certificate must state — device used, person operating it, the period of control — and the
-   generator for that is still unwired (`Section63CertificateGenerator`).
+   certificate must state — device used, person operating it, the period of control. That wizard is
+   wired: `/police/certificate` renders `Section63CertificateGenerator` fed from the ledger row, and the
+   Part A it collects is appended as a `kind: 'CUSTOM'` record naming the exhibit's record index, then
+   offered as a text download. What it cannot do is *prove* any of it — every field in Part A is what an
+   officer typed, so the certificate documents an account of custody instead of corroborating one. The
+   digest written beside it is the part that resists editing.
 7. **Not admissibility.** `isAuthentic: true` in this app is a statement about hashes and signatures.
    Admissibility is a judicial decision under BSA s.59/61/63 and the court's own rules about
    electronic records, and no client-side tool can pre-decide it. Nothing here says "court-admissible"
@@ -233,7 +237,7 @@ a document is a promise and a grep is not a gate.
 Re-run the proof:
 
 ```bash
-node tools/ledger_repro.cjs          # 28 claims, exit non-zero if any fails
+node tools/ledger_repro.cjs          # 29 claims, exit non-zero if any fails
 npm test                             # 61 tests (trust primitives, ledger, custody, the s.63
                                      # certificate document, the persistence probe, the citizen
                                      # intake's round trip through the real façade) + 14 statutory

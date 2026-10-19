@@ -1137,6 +1137,65 @@ const main = async () => {
             : `Scanned the string and JSX literals of all ${reachable.size} files reachable from src/main.tsx (comments stripped first, so a disclaimer cannot read as a claim). \`initializeLedger\`/\`getBlockchain\`/\`BlockchainBlock\` are now initializeLedger/getLedgerEntries/LedgerEntry for the same reason: the names were the claim.`
     );
 
+    // --------------------------------------------------------------------------- D16 / claim 29
+    //
+    // Group H above proves the *source* cannot render a mechanism claim. It scans `src/`, so the front
+    // door - the one document most readers open before they read a line of code, and the one that had
+    // been promising "AI & Blockchain" and a license that was never in the repository - was outside
+    // every gate in this project. So the README gets checked structurally: the sections it promises, the
+    // commands it tells a stranger to run, the routes it links to, and the vocabulary it is allowed.
+    const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
+    const readmeLines = readme.split('\n');
+    const readmeHeadings = readmeLines.filter((l) => /^## /.test(l)).map((l) => l.replace(/^##\s+/, '').trim());
+    const WANT_SECTIONS = ['What this is', 'What this is not', 'Trust model', 'Statutory anchors',
+        'Getting started', 'Quality gates', 'License'];
+    // Claims, not words. A file may say "there is no consensus and no peer network"; what it may not do
+    // is advertise a mechanism the code does not implement.
+    const NEVER_IN_README = ['blockchain', 'zero-knowledge', 'end-to-end encrypt', "india's first",
+        'court-grade', 'e-courts', 'mit license', 'hackathon', 'openai', 'verified & secure',
+        'potential tampering', 'cases analyzed', 'user satisfaction', 'courts connected',
+        'join thousands', '22 languages', 'npm install'];
+    const lowerReadme = readme.toLowerCase();
+    const readmeClaims = NEVER_IN_README.filter((w) => lowerReadme.includes(w));
+    // Words a denial is allowed to use, on the same rule group H applies to source strings: forbidding
+    // "quantum" outright would delete the sentence that says the app is not quantum-safe, which is the
+    // one sentence in the file that a reader most needs.
+    const DENIED_TERMS = ['quantum', 'tampering', 'unbreakable', 'immutable', 'post-quantum'];
+    const undenied = readmeLines
+        .filter((l) => DENIED_TERMS.some((w) => l.toLowerCase().includes(w)))
+        .filter((l) => !/\bnot\b|\bno\b|\bnever\b|\bwithout\b/i.test(l));
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+    const haveScripts = Object.keys(pkg.scripts || {});
+    const citedScripts = [...readme.matchAll(/npm run ([a-zA-Z0-9:_-]+)/g)].map((m) => m[1]);
+    const bogusScripts = citedScripts.filter((name) => !haveScripts.includes(name));
+    const citedTools = [...readme.matchAll(/node (tools\/[A-Za-z0-9._/-]+)/g)].map((m) => m[1]);
+    const missingTools = citedTools.filter((rel) => !fs.existsSync(path.join(repoRoot, rel)));
+    const appRoutes = fs.readFileSync(path.join(repoRoot, 'src/App.tsx'), 'utf8');
+    const citedRoutes = [...readme.matchAll(/`(\/(citizen|police|judge)\/([a-z-]+))`/g)].map((m) => m[1]);
+    const missingRoutes = citedRoutes.filter((route) => {
+        const parts = route.slice(1).split('/');
+        return !appRoutes.includes(`path="/${parts[0]}"`) || !appRoutes.includes(`path="${parts[1]}"`);
+    });
+    check(
+        'The README is a document the code can be checked against, not a brochure',
+        readmeHeadings.join('|') === WANT_SECTIONS.join('|')
+            && readme.includes('No license is currently declared')
+            && readme.includes('npm ci')
+            && readmeClaims.length === 0
+            && undenied.length === 0
+            && citedScripts.length >= 3 && bogusScripts.length === 0
+            && missingTools.length === 0
+            && citedRoutes.length >= 4 && missingRoutes.length === 0,
+        `sections [${readmeHeadings.join(' / ')}]; `
+        + `${citedScripts.length} npm run + ${citedTools.length} tool commands, all of which exist`
+        + `${bogusScripts.length ? ` EXCEPT ${bogusScripts.join(', ')}` : ''}`
+        + `${missingTools.length ? ` and missing: ${missingTools.join(', ')}` : ''}; `
+        + `${citedRoutes.length} persona routes cited, ${missingRoutes.length ? `not routed: ${missingRoutes.join(', ')}` : 'all routed in App.tsx'}; `
+        + `license sentence and \`npm ci\` ${readme.includes('No license is currently declared') && readme.includes('npm ci') ? 'present' : 'MISSING'}; `
+        + `advertised mechanisms: ${readmeClaims.length ? readmeClaims.join(', ') : 'none'}; `
+        + `denied terms outside a negation: ${undenied.length ? undenied.map((l) => l.trim().slice(0, 54)).join(' | ') : 'none'}`
+    );
+
     console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);
     if (fail === 0) {
         console.log('Verdict: the ledger does the three things the app asks of it - it detects');
