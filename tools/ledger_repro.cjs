@@ -1197,6 +1197,93 @@ const main = async () => {
         + `denied terms outside a negation: ${undenied.length ? undenied.map((l) => l.trim().slice(0, 54)).join(' | ') : 'none'}`
     );
 
+    console.log('\n=== I. the app\'s numbers about itself, cross-checked against the files that hold them ===');
+
+    // --------------------------------------------------------------------------- D34 / claim 30
+    //
+    // Groups A-H guard plumbing and vocabulary. This one guards a screen that is legible and false, which
+    // no earlier claim can see. The rule is deliberately narrower than "no fake data": every fixture in
+    // this repository is fake and says so in a comment, and a comment is not a disclaimer a user reads.
+    // So the test is a conjunction - a titled person's name, a score key in the same file, and nothing in
+    // that file's own *rendered* text telling the reader the data is a sample. D29 deleted the worst
+    // instance of this shape and the register noted that the shape itself was still on two other screens;
+    // this is the difference between "we fixed that screen" and "a rule applies to that screen".
+    const TITLED = /\b(?:Adv\.|Advocate|Dr\.|SI|HC|Inspector|Superintendent|Shri|Smt\.)\s+[A-Z][a-z]+/;
+    const SCORE_KEY = /\b(?:riskLevel|adjournmentRisk|adjournmentRate|predictedDelay|averageDelayMonths|casesHandled|riskScore|confidence|complianceScore|historicalRate)\b/;
+    // The vocabulary of "this was written by a person, not measured": sample data, and an invented number that says
+    // so out loud. `not a model` is here because SmartFIR fabricates no rows - it fabricates a *measurement* -
+    // and "placeholder" is deliberately NOT, since Tailwind's `placeholder:` utility made any input styling
+    // read as a disclaimer when quoted strings were scanned.
+    const HEDGE_WORDS = /\b(sample|samples|sampled|illustrative|fixture|fixtures|demo|simulated|synthetic|fictional|not real|no real|does not exist|invented|not a model|no model|not measured|fixed number|fixed value)\b/i;
+    // A hedge has to be text a reader sees, so only JSX text counts - one-line or wrapped - and a quoted
+    // string does not. Two consequences, both intended: a `title="sample data"` tooltip cannot satisfy this
+    // (something a reader must hover is not printed on the screen, which is the standard the About page sets),
+    // and a Tailwind class list containing the word `placeholder` cannot either. Wrapped text is accepted
+    // because that is what a formatter produces, and a gate that a reindent alone can fail is a gate that
+    // gets deleted; `[^=]` keeps `=>`-shaped code out, and no braces may appear between the tags, which is
+    // what keeps an expression container from reading as prose.
+    const jsxText = (code) => [
+        ...code.matchAll(/[^=]>\s*([^<>{}\n]{8,})<\s*\n?/g),
+        ...code.matchAll(/[^=]>\s*([A-Z][^<>{}]{12,1200}?)\s*</gs),
+    ].map((m) => m[1]).filter((t) => /[a-z]{3,}\s+[a-z]{3,}/.test(t));
+
+    const unlabelled = [];
+    for (const file of srcFiles) {
+        if (!reachable.has(file)) continue;             // dead screens are the purge block's problem, not the reader's
+        const code = codeOnly(file);                    // comments stripped, so a source note cannot satisfy this
+        if (!TITLED.test(code) || !SCORE_KEY.test(code)) continue;
+        if (jsxText(code).some((lit) => HEDGE_WORDS.test(lit))) continue;
+        const who = (code.match(TITLED) || [''])[0].trim();
+        const key = (code.match(SCORE_KEY) || [''])[0];
+        unlabelled.push(`${file} (${who} + ${key})`);
+    }
+    check(
+        'A live screen that names a person beside a score says out loud that the data is a sample',
+        unlabelled.length === 0,
+        unlabelled.length
+            ? `${unlabelled.length} live file(s) pair a titled name with a score key and render no hedge: `
+              + `${unlabelled.slice(0, 6).join(' | ')}`
+            : `scanned ${reachable.size} files reachable from src/main.tsx, comments stripped, so a source note cannot `
+            + `count as a hedge; JSX text only, so a tooltip cannot either. Two exclusions stated rather than hidden: `
+            + `"Justice <name>" is not matched because in this repository it names a foundation, not a judge; and a `
+            + `titled name with no score key is not matched, because a list of advocates is not an assessment. The one `
+            + `live file this rule guards is personas/judge/pages/JudgeBoard.tsx - fixture rows naming six advocates `
+            + `and four SIs, a hand-written adjournmentRisk that the board sorts by, and the URL that /judge/risk `
+            + `redirects to since D29. Two more screens are labelled in the same commit even though this claim does `
+            + `not police them: CaseQueuePage (names, no score) and SmartFIR, whose "AI Confidence" is a setInterval `
+            + `that always lands on 100 next to four String.includes tests - an invented measurement rather than `
+            + `invented data, which is a different rule and should get its own claim.`
+    );
+
+    // --------------------------------------------------------------------------- D34 / claim 31
+    //
+    // PROJECT_KNOWLEDGE_BASE.md §7 has long asserted that the claim count "is asserted by
+    // docs/TRUST_MODEL.md §7 and by the About page's fourth number, so a claim quietly dropped makes two
+    // other things fail". Nothing enforced any of it: the number is a literal in AboutStats.tsx and a
+    // sentence in two markdown files, edited by hand, four times, every time a claim lands - and adding
+    // claim 30 is what proved the assertion false, because all three drifted out of step and no gate
+    // noticed. So the count gets one check that reads the four sources and compares them. The static
+    // call-site count is the anchor because it cannot lie about how many claims exist: a claim deleted
+    // from this file is a `check(` gone, and that is the failure mode this project has been bitten by
+    // before (a check that stopped running looked exactly like a check that passed).
+    const claimSites = (fs.readFileSync(path.join(repoRoot, 'tools/ledger_repro.cjs'), 'utf8')
+        .match(/^ {4}check\(/gm) || []).length;
+    const aboutSrc = fs.readFileSync(path.join(repoRoot, 'src/features/main/components/about/AboutStats.tsx'), 'utf8');
+    const aboutValue = Number((aboutSrc.match(/id: 'claims',[\s\S]{0,160}?value: (\d+)/) || [])[1]);
+    const readmeCount = Number((readme.match(/node tools\/ledger_repro\.cjs\s+#\s+(\d+) claims/) || [])[1]);
+    const trustModelPath = path.join(repoRoot, 'docs/TRUST_MODEL.md');
+    const trustCount = Number((fs.readFileSync(trustModelPath, 'utf8')
+        .match(/node tools\/ledger_repro\.cjs\s+#\s+(\d+) claims/) || [])[1]);
+    check(
+        'The claim count the app shows and documents is the count the harness actually runs',
+        claimSites > 0 && aboutValue === claimSites && readmeCount === claimSites && trustCount === claimSites,
+        `the harness has ${claimSites} \`check(\` call sites at four-space indentation (measured, not counted by hand); `
+        + `About's fourth number says ${aboutValue}; README says ${readmeCount}; docs/TRUST_MODEL.md says ${trustCount}. `
+        + `All four must agree, and About's heading above them reads "Four Numbers You Can Check", which is a `
+        + `promise this file now keeps. A claim dropped from this harness without editing the three documents `
+        + `fails here, which is the case that had no gate until D34.`
+    );
+
     console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);
     if (fail === 0) {
         console.log('Verdict: the ledger does the three things the app asks of it - it detects');

@@ -237,8 +237,8 @@ a document is a promise and a grep is not a gate.
 Re-run the proof:
 
 ```bash
-node tools/ledger_repro.cjs          # 29 claims, exit non-zero if any fails
-npm test                             # 61 tests (trust primitives, ledger, custody, the s.63
+node tools/ledger_repro.cjs          # 31 claims, exit non-zero if any fails
+npm test                             # 63 tests (trust primitives, ledger, custody, the s.63
                                      # certificate document, the persistence probe, the citizen
                                      # intake's round trip through the real façade) + 14 statutory
                                      # tests

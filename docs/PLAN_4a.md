@@ -225,5 +225,7 @@ Each step is a commit, each commit keeps all four gates green (tsc 0 · `npm tes
 files above are the whole census; `listCases` consumers and `EvidenceLocker` read the same object type;
 `node tools/ledger_repro.cjs` still ends at the count its header claims, with any claim rewritten to
 match what became true (a claim that had to be *weakened* to pass is a regression, and says so in its
-own text); and the census line for unreachable files goes **down**, never up. If 4(a) ends with more
+own text); and the census line for unreachable files goes **down**, never up. As of D34 the first half of that sentence is no longer
+a convention: claim 31 compares the harness's own `check(` call sites against the number printed on the About page and the numbers in
+`README.md` and this file's sibling document, so a claim deleted mid-flight fails a gate instead of improving one. If 4(a) ends with more
 dead code than it started with, the migration left shims behind — find them before the PR does.

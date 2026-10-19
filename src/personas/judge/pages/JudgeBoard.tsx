@@ -385,6 +385,13 @@ const JudgeBoard: React.FC = () => {
                                 <p className="text-xs text-slate-400">
                                     Hon. {user?.name || 'Justice'} • {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                                 </p>
+                                <p className="text-xs text-amber-300/70 mt-1.5 max-w-2xl">
+                                    Sample docket. The six cases on this board, the advocates' and investigating officers'
+                                    names, and the LOW / MEDIUM / HIGH adjournment field are fixtures written into this file.
+                                    This build stores no case data, and there is no per-advocate history anywhere in it, so a
+                                    name on this page is not a rating of a real lawyer - and the order the board sorts
+                                    itself into is decided by that fixture field, not by anything a court recorded.
+                                </p>
                             </div>
                         </div>
 
