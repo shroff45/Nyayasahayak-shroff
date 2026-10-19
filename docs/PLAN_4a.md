@@ -47,14 +47,19 @@ After the nationals purge (PR #7), recomputed the same way with `node tools/reso
 
 | | |
 |---|---|
-| files under `src/` | 171 (42,813 lines) |
+| files under `src/` | 171 (42,816 lines) |
 | reachable from `src/main.tsx` | 124 |
 | unreachable | 47 (6,674 lines, **15.6 %** of `src/`, down from 34.7 %) |
 | unresolved first-party specifiers | 0 |
 | largest unreachable island | `src/features/main/` - 13 files, 2,468 lines, inside a directory that is 32 files *live* |
 
 Both blocks stay: the first is the baseline this plan was written against, and quietly restating
-history as the current number is how a plan stops being falsifiable.
+history as the current number is how a plan stops being falsifiable. One caution while reading them:
+the file counts and the reachability split are the load-bearing numbers. The total line count is not -
+it moved by 3 lines while the prose above was being written, because comments inside `src/` are
+counted too. Quote it from a fresh run, or quote a file count instead; that is also why no gate in
+this repository hardcodes it.
+
 
 ## 2. The three shapes
 

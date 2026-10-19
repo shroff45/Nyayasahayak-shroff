@@ -76,7 +76,7 @@ except through one line, and that line was a demo dashboard.
 | files deleted | 73 = 58 in `src/features/nationals/` + `src/personas/citizen/pages/VoiceFilingInterface.tsx` (450 lines) + `src/components/VoiceFilingInterface.tsx` (282) + 13 tracked log files |
 | lines deleted | 13,274 in the subtree (58 files, `git show \| wc -l`), 732 in the two voice files, and 361 lines / 72,528 bytes across the 13 logs — all of them `tsc` or `eslint` stdout dumps, six of which name paths this commit also deletes |
 | proof before deleting | `--json` closure: exactly **one** edge crossed into the whole set — `App.tsx` → `features/nationals/modules/judge/JudgeDashboard.tsx` (lazy). Both `VoiceFilingInterface` copies had **no importers at all** |
-| reachability | 229 files / 130 reachable / 99 unreachable (19,716 lines, 34.7 %) → 171 / 124 / 47 (6,674 lines, **15.6 %**) |
+| reachability | 229 files / 130 reachable / 99 unreachable (19,716 lines, 34.7 %) → 171 / 124 / 47 (6,674 lines of 42,816, **15.6 %**) |
 | bundle | dist 3,636,710 B → 3,599,037 B; JS chunks 99 → 96; entry `index-*.js` 625,422 B → 625,201 B (**−221 B**, the lazy wrapper only); largest asset unchanged at 504.08 kB of the 600 kB budget |
 | dependency | `uuid` + `@types/uuid` uninstalled; their only two importers were the dead copies, so `package.json` no longer lists a package that nothing imports |
 | gates | `tsc` 0 errors · `npm test` 63/63 · `node tools/ledger_repro.cjs` 29/29 · `npm run build` green, `check_bundle_size.mjs` 97/97 assets under budget |
@@ -166,7 +166,7 @@ CI passes only because `.github/workflows/ci.yml` runs `npm ci` first. **Fixed b
 
 Re-measured with `node tools/resolve-importers.mjs`, which is the only acceptable way to state a
 number in this section: **124 of 171** files reachable from `src/main.tsx` through resolved static
-**and** `React.lazy` dynamic imports; **47** are not, **6,674** lines of **42,813**. Before the
+**and** `React.lazy` dynamic imports; **47** are not, **6,674** lines of **42,816**. Before the
 nationals purge this read 130/229 and 99/19,716 - and the sentence before *that* one said
 131/98/19,611, which was already a file out of date the day it was written. That is the argument
 for the command over the number. Reachability moved 130 → 124 (the six nationals files the route
