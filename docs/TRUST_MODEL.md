@@ -261,7 +261,7 @@ repository clicked through the whole chain, and it paid for itself immediately â
 had been arriving at `/citizen/home`, because `App` chose its public route tree before the session restore
 finished and that tree's catch-all rewrote the address. Every bookmarked or shared deep link in the product
 lost its target, and a type checker, 53 unit tests and a source-reading harness were all green while that
-was true. It is D25, fixed by holding the first paint on `isLoading` and pinned by harness claim 27.
+was true. It is D25, fixed by holding the first paint on `isLoading` and pinned by the harness claim "A cold boot holds the first paint instead of routing, so a deep link survives it" (number 21 today, 27 when this sentence was written - numbered citations drift, see PROJECT_KNOWLEDGE_BASE.md D35).
 
 It needs a browser binary (`npx playwright install --with-deps chromium`, which CI runs) and it drives
 `vite preview` on `npm run build`, so a green journey and a green build describe the same bytes. The
