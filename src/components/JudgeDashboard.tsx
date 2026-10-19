@@ -10,7 +10,6 @@ import { applicableLawFor } from '../core/workspace/legacyCaseAdapter';
 import CaseQueue from './CaseQueue';
 import CaseDetailsPanel from './CaseDetailsPanel';
 import DraftJudgmentPanel from './DraftJudgmentPanel';
-import AdjournmentRiskPanel from './AdjournmentRiskPanel';
 import GraphVisualizationPanel from './GraphVisualizationPanel';
 
 interface JudgeDashboardProps {
@@ -152,12 +151,11 @@ export default function JudgeDashboard({ t }: JudgeDashboardProps) {
 
             {/* RIGHT: AI Tools (30%) */}
             <div className="w-[28%] min-w-[300px] flex flex-col gap-4 overflow-hidden">
-                {/* Adjournment Risk */}
-                {selectedCase?.lawyerId && (
-                    <div className="glass rounded-2xl p-4">
-                        <AdjournmentRiskPanel lawyerId={selectedCase.lawyerId} t={t} />
-                    </div>
-                )}
+                {/* Adjournment Risk: the panel was deleted by D29 (invented per-advocate scoring).
+                    This file is unreachable and dies with block 4(a) along with its `Case` namer
+                    status, so the JSX is removed here rather than this dashboard being deleted early -
+                    deleting it now would drag applicableLawFor's retirement out of 4(a), where the plan
+                    put it. */}
 
                 {/* Knowledge Graph */}
                 <div className="flex-1 glass rounded-2xl overflow-hidden flex flex-col min-h-[250px]">

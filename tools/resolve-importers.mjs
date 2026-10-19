@@ -79,6 +79,7 @@ const SYMBOL = take('--symbol');
 const ENTRIES = argv.filter((a) => a.startsWith('--entry=')).map((a) => a.slice(8));
 
 const rel = (p) => path.relative(ROOT, p).split(path.sep).join('/');
+const SELF = rel(path.resolve(new URL(import.meta.url).pathname));   // this file must not vouch for itself
 
 // ------------------------------------------------------------------ comment stripping
 /**
@@ -275,15 +276,80 @@ function census(g) {
     console.log('typechecks all of src/, not just what main.tsx reaches). Use --model for that job.');
 }
 
+// The graph is seeded from `src/main.tsx` because that is the app's only entry point. It is not the only
+// *consumer* of src/: `tests/` and `tools/` import it directly, and a file can be unreachable from the app
+// while being the entry the whole verification surface runs through. `src/core/trust/index.ts` reported
+// "no importers at all", a cleanup commit believed it, `npm test` died with ERR_MODULE_NOT_FOUND and the
+// harness died inside esbuild (register row D32). So --orphans says which candidates a test or a tool
+// names, and lists those last: they are not on the delete-me list, whatever the graph says. This is an
+// annotation, not a verdict - `tests/` can be wrong to import something as happily as `src/` can.
+const VERIFICATION_ROOTS = ['tests', 'tools'];
+let verificationCache = null;
+const verificationFiles = () => {
+    if (verificationCache) return verificationCache;
+    const out = [];
+    const walk = (dir) => {
+        const abs = path.join(ROOT, dir);
+        if (!fs.existsSync(abs)) return;
+        for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
+            const pth = path.join(abs, e.name);
+            if (e.isDirectory()) walk(pth);
+            else if ([...CODE_EXT, '.cjs', '.mjs'].includes(path.extname(e.name))) {
+                // This tool's own source quotes paths like `src/core/trust/index.ts` in the comments
+                // below, and a doc comment is not a consumer: counting it made src/core/types.ts look
+                // gate-protected when nothing in tests/ or tools/ imports it. Prose is out; and so is
+                // this file, whatever it says.
+                if (rel(pth) === SELF) continue;
+                out.push({ rel: rel(pth), text: fs.readFileSync(pth, 'utf8') });
+            }
+        }
+    };
+    for (const d of VERIFICATION_ROOTS) walk(d);
+    return (verificationCache = out);
+};
+
+// A test can reach the same module up-relative, through an alias, or via the barrel, so every spelling of
+// the path is searched for - with and without the extension, because `node --test` wants `.ts` and esbuild
+// does not care.
+const pathVariants = (f, g) => {
+    const bare = f.replace(/\.(tsx?|jsx?|mjs|cjs)$/, '');
+    const v = new Set([f, bare, `${bare}/index.ts`, `${bare}/index.tsx`, `${bare}/index`]);
+    for (const [alias, absTarget] of g.aliases) {
+        const target = rel(String(absTarget));
+        if (f.startsWith(`${target}/`)) {
+            const a = `${alias}/${f.slice(target.length)}`;
+            v.add(a);
+            v.add(a.replace(/\.(tsx?|jsx?|mjs|cjs)$/, ''));
+        }
+    }
+    return [...v].filter((x) => x.length > 6);
+};
+
+const namedByVerification = (f, g) => {
+    const variants = pathVariants(f, g);
+    return verificationFiles()
+        .filter((v) => variants.some((x) => v.text.includes(x)))
+        .map((v) => v.rel);
+};
+
 function orphans(g) {
     const rows = g.unreachable
-        .map((f) => ({ f, lines: g.lines(f), importers: g.importers.get(f).size }))
+        .map((f) => ({ f, lines: g.lines(f), importers: g.importers.get(f).size, verified: namedByVerification(f, g) }))
         .filter((r) => r.lines >= MIN)
-        .sort((a, b) => b.lines - a.lines);
-    console.log(`${rows.length} unreachable file(s) with >= ${MIN} lines, sorted by size`);
+        .sort((a, b) => (a.verified.length > 0) - (b.verified.length > 0) || b.lines - a.lines);
+    const guarded = rows.filter((r) => r.verified.length).length;
+    console.log(`${rows.length} unreachable file(s) with >= ${MIN} lines, sorted by size` +
+        (guarded ? ` - the last ${guarded} name a file tests/ or tools/ imports, so this list is not a deletion licence` : ''));
     for (const r of rows) {
         console.log(`  ${String(r.lines).padStart(6)}  ${r.f}` +
-            (r.importers ? `   <- ${r.importers} dead importers` : '   <- no importers at all'));
+            (r.verified.length
+                ? `   <- VERIFICATION-ONLY ENTRY POINT (${r.verified.length} referencing file(s)): ${r.verified.join(', ')}`
+                : (r.importers ? `   <- ${r.importers} dead importers` : '   <- no importers at all')));
+    }
+    if (guarded) {
+        console.log('\nA verification-only file is reachable from the *gate*, not from the app: deleting it takes\n' +
+            '`npm test` or tools/ledger_repro.cjs down with it. Confirm with  grep -rn <basename> tests/ tools/  -\n' +
+            'which is the step that turned this annotation into a rule (D32).');
     }
 }
 
@@ -371,3 +437,4 @@ else if (mode === 'json') {
         entries: g.entries,
     }, null, 1));
 } else if (mode === 'check') check(g);
+

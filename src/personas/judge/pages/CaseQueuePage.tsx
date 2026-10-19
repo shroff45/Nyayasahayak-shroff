@@ -70,6 +70,10 @@ const CaseQueuePage: React.FC = () => {
                     <div>
                         <h1 className="text-2xl font-bold text-white">Case Queue</h1>
                         <p className="text-slate-400 text-sm">Manage pending cases in your queue</p>
+                        <p className="text-xs text-amber-300/70 mt-1">
+                            Sample queue: these five cases, their CNR numbers and the advocates' names are demo fixtures in
+                            this file, not a record from any court registry.
+                        </p>
                     </div>
                 </div>
 

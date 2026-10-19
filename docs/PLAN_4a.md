@@ -62,6 +62,8 @@ And after D28 (PR #9), same command:
 | unreachable | 34 (4,206 lines, **10.4 %** of `src/`) |
 | unresolved first-party specifiers | 0 |
 | `src/features/main/` | 32 files tracked, **all 32 live**: the directory left the census |
+| after D29 | 151 files (39196 lines) / 123 reachable / 28 unreachable (3159 lines, 8.1 % of `src/`) — and `reachable` fell to 123, because D29 deleted a *live* screen rather than a dead file |
+| after D33 | 150 files (38,629 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — `reachable` fell by 2: the sandbox was routed, and its only consumer of `CognizanceReview.tsx` was itself |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -75,7 +77,7 @@ this repository hardcodes it.
 
 | file | shape | importers | live | naming `Case` | live namers |
 |---|---|---|---|---|---|
-| `src/types.ts` | **golden** — 19 fields, several required | 10 | 5 | 6 | 3 |
+| `src/types.ts` | **golden** — 19 fields, several required | 9 | 4 | 6 | 3 |
 | `src/core/types.ts` | strict subset, missing 6 golden fields (4 required: `adjournmentsCount`, `incidentDate`, `isZeroFir`, `applicableLaw`; 2 optional: `judgeId?`, `zeroFirTransferStatus?`) | 7 | **0** | 3 | 0 |
 | `src/features/main/types.ts` | legacy intake — `caseNumber`, `petitioner`, `invokedActs`, `title`, `complexityScore`, `pii` | 12 | **12** | 8 | **8** ← all live, 0 dead namers |
 
@@ -107,7 +109,9 @@ after the purge deleted the subtree. A directory-based listing missed 2 of the 1
 directories whose *other* files were live - which is exactly why the census is taken with
 `--model` and not with `grep -r`.
 
-The 6 that survive are the entire scope of this block:
+The 6 that survive are the entire scope of this block. Re-measured after D29: the set did not shrink, but
+`src/components/JudgeDashboard.tsx` lost the fabricated panel it was rendering (197 -> 195 lines) and the
+golden model lost a live importer, which is why its row above now reads 9 importers / 4 live:
 
 ```
 src/components/CaseDetailsPanel.tsx
@@ -122,7 +126,10 @@ src/personas/judge/components/DraftJudgmentPanel.tsx
 
 1. **The golden shape is consumed differently, never edited.** `src/types.ts`'s `Case` keeps its
    fields. That constraint is what keeps two dead golden namers (`components/CaseDetailsPanel.tsx`,
-   `components/CaseQueue.tsx`) green while everything around them moves.
+   `components/CaseQueue.tsx`) green while everything around them moves. D29 left one more thing here on
+   purpose: golden `AdjournmentRisk` is now exported to nobody, because the screen that read it was
+   fabricated and was deleted rather than retyped. An unused *type* export is not a `Case` field, so it is
+   fair to delete in this block - but the commit message has to say the reason is a defect, not a tidy-up.
 2. **A type edit and the death of its dead namers are one commit.** Never two. `tsc` is the whole
    reason, and CI runs `tsc`.
 3. **`legacyCaseAdapter.ts` is 4(a)'s file, not anyone else's.** It has **3** importers: 2 live
@@ -186,9 +193,22 @@ Each step is a commit, each commit keeps all four gates green (tsc 0 · `npm tes
 - **4(a)-ii — move the live namers off `features/main/types.ts`** (the 8) by importing the golden type
   and calling the adapter at the boundary. This is the bulk of the block. Keep each page's own props
   typed; only the *shared* shape moves.
-- **4(a)-iii — retire `src/core/types.ts`'s `Case`** (0 live importers, 3 dead namers): delete the
-  three dead files that name it, then the type. This is the only step that is pure subtraction, so it
-  goes first if you need a warm-up, and first in review order if you need a win.
+- **4(a)-iii — retire `src/core/types.ts`'s `Case`** (re-measured after D33: 7 importers, 0 live; 3 dead
+  namers, 0 live). The plan used to say "delete the three dead files that name it, then the type", which
+  is **4 files and is wrong**: `--model` lists four more dead files importing the module without naming
+  `Case` (`shared/components/DecisionStream.tsx`, `shared/components/VisualEvidencePanel.tsx`,
+  `shared/services/documentAnalysis.ts`, `shared/services/observabilityService.ts`) - `tsc` typechecks
+  them, so they cannot be left holding a deleted import. And the fixpoint is 9, not 8: deleting those 8
+  strands nothing, but leaves **one importer outside the set**, `src/core/layout/DashboardLayout.tsx:5`,
+  which renders `<DecisionStream />` at `:110` - and is itself unreachable with 0 importers, so it goes in
+  the same commit. Measured with the closure rule used for D28: **9 files, 693 lines (the resolver's rule,
+  not `wc -l`), 0 live members, 0 importers from outside, 0 files newly orphaned**, and it empties
+  `src/core/layout/`, `src/modules/judge/` and `src/shared/services/`. That is still pure subtraction, so
+  it remains a fair warm-up - but it is nine files, and "three" was the number to fix before running it.
+  Naming trap for whoever executes this: **two** files are called `DraftJudgmentPanel.tsx`, and they are
+  not twins - `personas/judge/components/` (159 lines, dead, imports `core/types`) belongs to this step,
+  while `src/components/` (201 lines, live, imports the golden `Case`) belongs to 4(a)-ii. `grep -ln
+  DraftJudgmentPanel` finds both; the import line tells them apart.
 - **4(a)-iv — make `legacyCaseAdapter` the single boundary** and delete the per-page coercions that
   grew around it (`complainant ?? petitioner`, `cnrNumber ?? caseNumber`, `sectionsInvoked ??
   invokedActs`) so the fallbacks live in one file with one test. Note the trap in that list:
@@ -205,5 +225,7 @@ Each step is a commit, each commit keeps all four gates green (tsc 0 · `npm tes
 files above are the whole census; `listCases` consumers and `EvidenceLocker` read the same object type;
 `node tools/ledger_repro.cjs` still ends at the count its header claims, with any claim rewritten to
 match what became true (a claim that had to be *weakened* to pass is a regression, and says so in its
-own text); and the census line for unreachable files goes **down**, never up. If 4(a) ends with more
+own text); and the census line for unreachable files goes **down**, never up. As of D34 the first half of that sentence is no longer
+a convention: claim 31 compares the harness's own `check(` call sites against the number printed on the About page and the numbers in
+`README.md` and this file's sibling document, so a claim deleted mid-flight fails a gate instead of improving one. If 4(a) ends with more
 dead code than it started with, the migration left shims behind — find them before the PR does.

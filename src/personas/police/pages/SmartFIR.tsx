@@ -388,6 +388,14 @@ Example: 'Subject reported a theft incident near Gandhi Chowk around 3:00 PM...'
                                     )}
                                 </div>
 
+                                <p className="text-xs text-slate-400 mb-3">
+                                    These suggestions are keyword matches, not a model. The page checks whether the text you
+                                    typed contains a word such as "snatch" or "bike" and prints a confidence number that is
+                                    written in the source; the meter runs up to 100% whatever it finds, including nothing.
+                                    Nothing here learns anything about this complaint, so confirm every section against the
+                                    BNS yourself before it goes into an FIR.
+                                </p>
+
                                 {suggestions.length > 0 ? (
                                     <div className="space-y-3">
                                         {suggestions.map((s, i) => (

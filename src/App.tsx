@@ -43,7 +43,6 @@ const About = React.lazy(() => import('./features/main/components/About'));
 
 // Judge-specific Components
 const DraftJudgmentPanel = React.lazy(() => import('./components/DraftJudgmentPanel'));
-const AdjournmentRiskPanel = React.lazy(() => import('./components/AdjournmentRiskPanel'));
 const NyayaChitra = React.lazy(() => import('./components/NyayaChitra'));
 
 // Citizen-specific Components. Voice filing is a mode inside the intake form itself - see the
@@ -88,7 +87,6 @@ const ProfileSettings = React.lazy(() => import('./shared/pages/ProfileSettings'
 // Citizen-specific Components (BNSS Compliance)
 
 // Demo/Sandbox Pages
-const EvidenceIntegrityDemo = React.lazy(() => import('./pages/EvidenceIntegrityDemo'));
 
 // ================== LOADING FALLBACK ==================
 const LoadingFallback: React.FC = () => (
@@ -302,17 +300,12 @@ const DraftJudgmentWrapper: React.FC = () => {
     );
 };
 
-const AdjournmentRiskWrapper: React.FC = () => {
-    const [language] = useState<Language>('en');
-    const { t } = useLocalization(language);
-
-    return (
-        <React.Suspense fallback={<LoadingFallback />}>
-            <AdjournmentRiskPanel t={t} lawyerId="L001" />
-        </React.Suspense>
-    );
-};
-
+/* D29: /judge/risk rendered AdjournmentRiskPanel with a hardcoded lawyerId="L001", and that
+   component's LAWYER_STATS object invented five named advocates with adjournment rates, case counts
+   and predicted delays. A screen cannot be labelled its way out of that - the numbers had no source -
+   so the panel, the wrapper and the route are deleted. The URL redirects to the board for the same
+   reason /judge/dashboard does: deleting a route people may have bookmarked is a worse outcome than
+   pointing it at the thing that replaced it. */
 const NyayaChitraWrapper: React.FC = () => {
     const [language] = useState<Language>('en');
 
@@ -391,15 +384,6 @@ const App: React.FC = () => {
                         <Route path="/about" element={<AboutWrapper />} />
 
                         {/* ================== DEV/DEMO ROUTES ================== */}
-                        <Route
-                            path="/integrity-sandbox/:caseId?"
-                            element={
-                                <React.Suspense fallback={<LoadingFallback />}>
-                                    <EvidenceIntegrityDemo />
-                                </React.Suspense>
-                            }
-                        />
-
                         {/* ================== SHARED ROUTES (All Authenticated Users) ================== */}
                         <Route
                             path="/profile"
@@ -458,7 +442,7 @@ const App: React.FC = () => {
                                     is deleted with the subtree; the URL outlived the screen, so it redirects to the
                                     judge board the same way /judge/home does. */}
                                 <Route path="dashboard" element={<Navigate to="/judge/board" replace />} />
-                                <Route path="risk" element={<AdjournmentRiskWrapper />} />
+                                <Route path="risk" element={<Navigate to="/judge/board" replace />} />
                                 <Route path="mapper" element={<CaseMapperWrapper />} />
                                 <Route path="timeline" element={<JusticeTimelineWrapper />} />
                                 <Route path="evidence" element={<DocumentAnalysisWrapper />} />
@@ -508,15 +492,14 @@ const App: React.FC = () => {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/about" element={<AboutWrapper />} />
 
-                {/* Evidence Integrity Sandbox - accessible without auth for testing */}
-                <Route
-                    path="/integrity-sandbox/:caseId?"
-                    element={
-                        <React.Suspense fallback={<LoadingFallback />}>
-                            <EvidenceIntegrityDemo />
-                        </React.Suspense>
-                    }
-                />
+                {/* D33: the Evidence Integrity Sandbox used to be mounted here, unauthenticated,
+                    as "/integrity-sandbox". It ran the real forensic interlock against invented
+                    custodians ("Dr. Priya Menon", Karnataka FSL) and offered a button that called
+                    approveOverride(compliance, 'SP_Karnataka_Division') - i.e. it let an anonymous
+                    visitor approve a BNSS s.176(3) exception to evidence law under a fabricated
+                    officer identity. A demo that grants a statutory exemption is not a demo.
+                    The magistrate-side review panel it drove, src/personas/judge/components/
+                    CognizanceReview.tsx, is clean and stays; it now waits for a real mount. */}
 
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

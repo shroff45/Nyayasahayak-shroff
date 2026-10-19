@@ -237,8 +237,8 @@ a document is a promise and a grep is not a gate.
 Re-run the proof:
 
 ```bash
-node tools/ledger_repro.cjs          # 29 claims, exit non-zero if any fails
-npm test                             # 61 tests (trust primitives, ledger, custody, the s.63
+node tools/ledger_repro.cjs          # 31 claims, exit non-zero if any fails
+npm test                             # 63 tests (trust primitives, ledger, custody, the s.63
                                      # certificate document, the persistence probe, the citizen
                                      # intake's round trip through the real fa√ßade) + 14 statutory
                                      # tests
@@ -261,7 +261,7 @@ repository clicked through the whole chain, and it paid for itself immediately ‚
 had been arriving at `/citizen/home`, because `App` chose its public route tree before the session restore
 finished and that tree's catch-all rewrote the address. Every bookmarked or shared deep link in the product
 lost its target, and a type checker, 53 unit tests and a source-reading harness were all green while that
-was true. It is D25, fixed by holding the first paint on `isLoading` and pinned by harness claim 27.
+was true. It is D25, fixed by holding the first paint on `isLoading` and pinned by the harness claim "A cold boot holds the first paint instead of routing, so a deep link survives it" (number 21 today, 27 when this sentence was written - numbered citations drift, see PROJECT_KNOWLEDGE_BASE.md D35).
 
 It needs a browser binary (`npx playwright install --with-deps chromium`, which CI runs) and it drives
 `vite preview` on `npm run build`, so a green journey and a green build describe the same bytes. The
