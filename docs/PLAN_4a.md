@@ -63,6 +63,7 @@ And after D28 (PR #9), same command:
 | unresolved first-party specifiers | 0 |
 | `src/features/main/` | 32 files tracked, **all 32 live**: the directory left the census |
 | after D29 | 151 files (39196 lines) / 123 reachable / 28 unreachable (3159 lines, 8.1 % of `src/`) — and `reachable` fell to 123, because D29 deleted a *live* screen rather than a dead file |
+| after D33 | 150 files (38,629 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — `reachable` fell by 2: the sandbox was routed, and its only consumer of `CognizanceReview.tsx` was itself |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -192,9 +193,22 @@ Each step is a commit, each commit keeps all four gates green (tsc 0 · `npm tes
 - **4(a)-ii — move the live namers off `features/main/types.ts`** (the 8) by importing the golden type
   and calling the adapter at the boundary. This is the bulk of the block. Keep each page's own props
   typed; only the *shared* shape moves.
-- **4(a)-iii — retire `src/core/types.ts`'s `Case`** (0 live importers, 3 dead namers): delete the
-  three dead files that name it, then the type. This is the only step that is pure subtraction, so it
-  goes first if you need a warm-up, and first in review order if you need a win.
+- **4(a)-iii — retire `src/core/types.ts`'s `Case`** (re-measured after D33: 7 importers, 0 live; 3 dead
+  namers, 0 live). The plan used to say "delete the three dead files that name it, then the type", which
+  is **4 files and is wrong**: `--model` lists four more dead files importing the module without naming
+  `Case` (`shared/components/DecisionStream.tsx`, `shared/components/VisualEvidencePanel.tsx`,
+  `shared/services/documentAnalysis.ts`, `shared/services/observabilityService.ts`) - `tsc` typechecks
+  them, so they cannot be left holding a deleted import. And the fixpoint is 9, not 8: deleting those 8
+  strands nothing, but leaves **one importer outside the set**, `src/core/layout/DashboardLayout.tsx:5`,
+  which renders `<DecisionStream />` at `:110` - and is itself unreachable with 0 importers, so it goes in
+  the same commit. Measured with the closure rule used for D28: **9 files, 693 lines (the resolver's rule,
+  not `wc -l`), 0 live members, 0 importers from outside, 0 files newly orphaned**, and it empties
+  `src/core/layout/`, `src/modules/judge/` and `src/shared/services/`. That is still pure subtraction, so
+  it remains a fair warm-up - but it is nine files, and "three" was the number to fix before running it.
+  Naming trap for whoever executes this: **two** files are called `DraftJudgmentPanel.tsx`, and they are
+  not twins - `personas/judge/components/` (159 lines, dead, imports `core/types`) belongs to this step,
+  while `src/components/` (201 lines, live, imports the golden `Case`) belongs to 4(a)-ii. `grep -ln
+  DraftJudgmentPanel` finds both; the import line tells them apart.
 - **4(a)-iv — make `legacyCaseAdapter` the single boundary** and delete the per-page coercions that
   grew around it (`complainant ?? petitioner`, `cnrNumber ?? caseNumber`, `sectionsInvoked ??
   invokedActs`) so the fallbacks live in one file with one test. Note the trap in that list:

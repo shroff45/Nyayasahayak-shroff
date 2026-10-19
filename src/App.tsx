@@ -87,7 +87,6 @@ const ProfileSettings = React.lazy(() => import('./shared/pages/ProfileSettings'
 // Citizen-specific Components (BNSS Compliance)
 
 // Demo/Sandbox Pages
-const EvidenceIntegrityDemo = React.lazy(() => import('./pages/EvidenceIntegrityDemo'));
 
 // ================== LOADING FALLBACK ==================
 const LoadingFallback: React.FC = () => (
@@ -385,15 +384,6 @@ const App: React.FC = () => {
                         <Route path="/about" element={<AboutWrapper />} />
 
                         {/* ================== DEV/DEMO ROUTES ================== */}
-                        <Route
-                            path="/integrity-sandbox/:caseId?"
-                            element={
-                                <React.Suspense fallback={<LoadingFallback />}>
-                                    <EvidenceIntegrityDemo />
-                                </React.Suspense>
-                            }
-                        />
-
                         {/* ================== SHARED ROUTES (All Authenticated Users) ================== */}
                         <Route
                             path="/profile"
@@ -502,15 +492,14 @@ const App: React.FC = () => {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/about" element={<AboutWrapper />} />
 
-                {/* Evidence Integrity Sandbox - accessible without auth for testing */}
-                <Route
-                    path="/integrity-sandbox/:caseId?"
-                    element={
-                        <React.Suspense fallback={<LoadingFallback />}>
-                            <EvidenceIntegrityDemo />
-                        </React.Suspense>
-                    }
-                />
+                {/* D33: the Evidence Integrity Sandbox used to be mounted here, unauthenticated,
+                    as "/integrity-sandbox". It ran the real forensic interlock against invented
+                    custodians ("Dr. Priya Menon", Karnataka FSL) and offered a button that called
+                    approveOverride(compliance, 'SP_Karnataka_Division') - i.e. it let an anonymous
+                    visitor approve a BNSS s.176(3) exception to evidence law under a fabricated
+                    officer identity. A demo that grants a statutory exemption is not a demo.
+                    The magistrate-side review panel it drove, src/personas/judge/components/
+                    CognizanceReview.tsx, is clean and stays; it now waits for a real mount. */}
 
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

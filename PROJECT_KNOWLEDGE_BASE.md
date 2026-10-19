@@ -181,9 +181,9 @@ git status --porcelain         → 0 (tree untouched; also chmod +x on .bin shim
 
 CI passes only because `.github/workflows/ci.yml` runs `npm ci` first. **Fixed by the hygiene commit in §0**: `.gitignore` already listed `node_modules/`, `dist`, `dist/` and `.env` (lines 42, 71, 84, 117, 129) — the entries were simply inert because the paths were already tracked, which is why untracking, not gitignoring, was the actual repair. Two footnotes for the next person debugging a clone: (a) a fresh `npm ci` is mandatory, and (b) if `node_modules` ever came from git rather than npm, the `.bin/*` shims and `@esbuild/<platform>/bin/esbuild` lose their exec bit → `spawnSync … EACCES`, fixed by `chmod +x node_modules/.bin/*` or a clean `npm ci`.
 
-### D3 — 8.1% of `src/` is unreachable (10.4% after D28, 15.6% after the nationals purge, 37.7% when this line was written)
+### D3 — 9.2% of `src/` is unreachable (8.1% after D29, 10.4% after D28, 15.6% after the nationals purge, 37.7% when this line was written)
 
-Re-measured with `node tools/resolve-importers.mjs`: **151 files (39196 lines) / 123 reachable / 28 unreachable (3159 lines, 8.1 % of `src/`)**.
+Re-measured with `node tools/resolve-importers.mjs`: **150 files (38,629 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 % of `src/`)**.
 Three purges got it here. 4(purge) took the nationals subtree and the two orphaned
 `VoiceFilingInterface` copies (229 -> 171 files). D28 took the dead half of `src/features/main/`
 (171 -> 158) and the reachable count did not move at all, because nothing in that set was live.
@@ -191,19 +191,32 @@ D29 took `src/components/AdjournmentRiskPanel.tsx`, **which was live** - the fir
 programme to reduce the reachable set, because what it removed was a routed screen making a
 fabricated claim, not unreachable code. `reachable` went 124 -> 123, and that is the correct
 direction for that commit: a purge of dead code must not move the number, and a purge of a dishonest
-screen must. Every figure above came out of a run; the file total in particular moves when comments
-are edited inside `src/`, which `docs/PLAN_4a.md` §1 now says out loud.
+screen must. D33 took the Evidence Integrity Sandbox - 555 live lines, and it stranded `personas/judge/
+components/CognizanceReview.tsx` (381 clean lines, one importer, which was the sandbox), so `reachable`
+fell again, 123 -> 121: one deletion, two files out of the live set. Every figure above came out of a run;
+the file total in particular moves when comments are edited inside `src/`, which `docs/PLAN_4a.md` §1 now
+says out loud.
+
+What the run counts as a *line* is part of the number, so it is stated once here: `tools/resolve-importers.mjs:235`
+scores a file by `readFileSync(…).split('\n').length`, which is `wc -l` plus one for any file ending in a
+newline. That is why D33's unreachable total rises by 382 lines for a 381-line file, why the 28 islands in
+the D29 row summed to 3,159 rather than 3,131, and why `git show --stat` will never agree with these
+tables. The rule is self-consistent across numerator and denominator, so the percentages and every
+delta in this register stand; what would be wrong is mixing it with `wc -l` mid-sentence, which is what
+the 28-line scare that produced this paragraph was.
 
 Everything in this section's history is this programme's own doing: D9's demo route deletion,
 D18's three deleted quantum copies, Q9 publishing the About page - which alone moved 8 files /
 1,426 lines out of the island in one commit, because publishing a page is a reachability change -
 and 4(purge).
 
-Largest remaining islands by lines: `src/personas/citizen` (4 files / 582 lines), `src/shared/components` (6 / 510), `src/personas/police` (1 / 251),
-`src/modules/judge` (2 / 231), `src/types/fir.types.ts` (1 / 211). 28 unreachable files over 18 directories, and unlike the two
-purges before it no single edge holds any of them together - the census is per-file judgment now,
-which is why the plan's remaining blocks are migrations rather than deletions. Full list with
-sizes and importer reasons: `node tools/resolve-importers.mjs --orphans`.
+Largest islands, straight out of `node tools/resolve-importers.mjs`'s own subtree table:
+`src/personas/citizen` (4 files / 582 lines), `src/personas/judge` (2 / 542 - `CognizanceReview.tsx`
+joined it at D33), `src/shared/components` (6 / 510), `src/components` (4 / 467), `src/types` (2 / 309).
+29 unreachable files over 14 subtrees, and unlike the two purges before it no single edge holds any of
+them together - the census is per-file judgment now, which is why the plan's remaining blocks are
+migrations rather than deletions. Full list with sizes and importer reasons:
+`node tools/resolve-importers.mjs --orphans`.
 
 Two things this section used to get wrong and should not be trusted to repeat: it stated its counts
 from grep (see §8's method note), and it treated an unreachable file as an inert one — but `tsc`
@@ -418,6 +431,7 @@ and not a merge-blocker. | `geminiService.ts:187`, `Nyayabot.tsx:590` | medium |
 | D30 | **CLOSED (this commit) — the honest s.346 panel is deleted too, because nothing could feed it.** `src/personas/judge/components/AdjournmentPanel.tsx` (223 lines, no importers) genuinely implemented BNSS s.346 - `caseData.adjournmentsCount ?? 0` against a max of 2, ceiling rendered in three places. Wiring it looked like the right move; measured, it is not. Golden `Case.adjournmentsCount` (`src/types.ts:20`) has exactly one live writer, `legacyCaseAdapter.ts:59`, which pins it to `0` unconditionally, and the ledger write path (`addBlock`, `ledgerRecords.ts`, the intake screen) carries no adjournment field at all. A wired panel would say "0 adjournments - within the s.346 limit" for every case ever filed: authoritative-looking fabrication, worse than absence. So both the fake scorer (D29) and the unusable honest one are gone. If s.346 returns it returns as a feature: an `ADJOURNMENT` block kind, a writer that fills it, and its own claim that the count came out of the store. | `grep -rn adjournmentsCount src/` | medium | closed (feature deferred) |
 | D31 | **CLOSED (this commit) — four dead look-alikes deleted, the fifth refused to die.** `personas/judge/components/HashVerifier.tsx` (300 lines) sat beside the routed, D18-honest `personas/judge/pages/HashVerifier.tsx` (359): an "improvement" landing in the wrong file keeps CI green, compiles fine, and ships nothing. Same shape in `personas/police/components/PatrolMap.tsx` (52) beside the live D27 map (434), and `shared/components/GoogleSignInModal.tsx` (207, header: *"Simulated Google OAuth Modal for Hackathon Demo"*) beside the mounted `UnifiedSignInModal.tsx` (628). Each deleted by name after `--json` showed 0 importers. **Not** deleted: `src/core/trust/index.ts` - see D32. | `--orphans` + `git ls-files \| grep -i <name>` + `grep -rn <name> tests/ tools/` | medium | closed |
 | D32 | **OPEN (tool gap, found by breaking the build): a file unreachable from `main.tsx` can still be load-bearing for the *verification* surface.** This commit's plan said "delete the trust barrel" - `src/core/trust/index.ts`, 68 lines, `--orphans` says *no importers at all*, and the resolver was right about the app. I deleted it and both gates went red: `tests/trust_ledger.test.ts` imports it, and `tools/ledger_repro.cjs` esbuild-bundles it as the trust layer's single entry point (`npm test` → `ERR_MODULE_NOT_FOUND src/core/trust/index.ts`; harness → `esbuild could not bundle src/core/trust/index.ts`). It is a file the app outgrew and the tests adopted, which is not the same thing as dead. `--json` cannot see it: reachability is seeded from `src/main.tsx` and `tests/`/`tools/` are not entries. The fix (this PR's third commit): `--orphans` annotates a candidate whose path or basename appears under `tests/` or `tools/` as "verification-only entry point". Until that lands, the procedure used for every deletion list in this register is the resolver *and* `grep -rn <name> tests/ tools/`. | `git checkout HEAD -- src/core/trust/index.ts` then both gates green again | medium | open → closed in this PR |
+| D33 | **CLOSED (this commit) — the sandbox that let an anonymous visitor approve a statutory exception, deleted with both of its mounts.** `src/pages/EvidenceIntegrityDemo.tsx` (555 lines) was mounted twice: inside the authenticated block and, under the comment *"accessible without auth for testing"*, in the public one. It drove the **real** forensic interlock against invented people - `SI Rajesh Sharma`, `Dr. Priya Menon`, `Karnataka FSL`, `TOK-2025-FSL-001`, `CASE-DEMO-101` - and pushed that mock data through the honest `ChainOfCustodyTimeline` and `CognizanceReview`, so a custodian record that never happened appeared inside the same components a real case uses. Its `:263` handler called `approveOverride(compliance, 'SP_Karnataka_Division')`: one click on an unauthenticated URL "approved" a BNSS s.176(3) override of the evidence-videography duty, under a fabricated officer identity. The duty itself does not bind yet either - s.176(3) applies only "from such date as may be notified", and no notification is in this repo's statutory anchors, so a panel "testing compliance scenarios" was asserting a commencement that has not happened; the file's own header called the whole thing a *flight simulator*. Deleted: both `<Route>`s, the `React.lazy` const, and the file; the public site keeps a comment saying why the URL is gone rather than a redirect to something no one advertised. **What the deletion exposed, measured:** `approveOverride` (`core/services/forensicInterlock.ts:212`) now has **no caller anywhere** - `src/`, `tests/` and `tools/` contain only its definition and the module's `export default` at `:339`; the magistrate's half of the override flow was this page (`onAccept` at `EvidenceIntegrityDemo.tsx:512`), and the harness never had a claim on the override path (`grep -c Override tools/ledger_repro.cjs` = 0), so the gate that survived is the one in `ChargeSheetGate`. `CognizanceReview.tsx` stays although it is now an island: 381 clean lines, props-only, correct five-value `OverrideReason` taxonomy including `STATE_EXEMPTION` - it is the thing to mount when a case exists, and deleting good code to shorten a census is the mistake this register already documents. Census as usual from the tool: 151 (39,196) / 123 / 28 (3,159) -> **150 (38,629) / 121 / 29 (3,541, 9.2 %)**. Deferred on purpose: `personas/judge/components/DraftJudgmentPanel.tsx` (159, names `core/types.ts`'s `Case`) and the live `src/components/DraftJudgmentPanel.tsx` (201, names the golden `Case`) are *not* twins - different props, different type worlds - and the dead one belongs to 4(a)-iii, which deletes it together with the type. A purge that removes a routed screen is allowed to lower `reachable`; a purge that does not had better leave it alone. | `node tools/resolve-importers.mjs` · `grep -rn approveOverride src tests tools` · `grep -n approveOverride tools/ledger_repro.cjs` · `git show --stat` | **high** | closed |
 
 ## 14. What I need from you (every answer changes what I write first)
 
