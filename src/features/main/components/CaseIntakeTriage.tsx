@@ -87,7 +87,7 @@ const CaseCard: React.FC<{ caseData: Case; isSelected: boolean; onSelect: () => 
     );
 };
 
-const CreateCaseModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (newCase: Omit<Case, 'id' | 'complexityScore' | 'filingDate' | 'lastHearingDate'>) => void; t: (key: string) => string; }> = ({ isOpen, onClose, onSave, t }) => {
+const CreateCaseModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (newCase: Omit<Case, 'id' | 'filingDate' | 'lastHearingDate'>) => void; t: (key: string) => string; }> = ({ isOpen, onClose, onSave, t }) => {
     const [newCaseData, setNewCaseData] = useState({
         title: '',
         caseNumber: `CR/${Math.floor(Math.random() * 1000)}/${new Date().getFullYear()}`,
@@ -273,12 +273,11 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
         await proceedWithPrediction(redactedCase);
     };
 
-    const handleCreateCase = (newCaseData: Omit<Case, 'id' | 'complexityScore' | 'filingDate' | 'lastHearingDate'>) => {
+    const handleCreateCase = (newCaseData: Omit<Case, 'id' | 'filingDate' | 'lastHearingDate'>) => {
         const today = new Date().toISOString().split('T')[0];
         const newCase: Case = {
             ...newCaseData,
             id: new Date().toISOString() + Math.random(),
-            complexityScore: Math.round(Math.random() * 5 + 3),
             filingDate: today,
             lastHearingDate: today,
             userId: currentUser.email
@@ -337,12 +336,6 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
         ).length
     }));
 
-    // Complexity Color Logic
-    const getComplexityColor = (score: number) => {
-        if (score >= 8) return 'text-red-600 dark:text-red-400';
-        if (score >= 5) return 'text-amber-600 dark:text-amber-400';
-        return 'text-emerald-600 dark:text-emerald-400';
-    };
     
     return (
         <AnimatedPageWrapper>
@@ -452,13 +445,6 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                         <div className="flex items-center gap-3 mb-3">
                                             <span className="px-2.5 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-300 dark:border-gray-600">
                                                 {formatNumber(selectedCase.caseNumber)}
-                                            </span>
-                                            {/* Complexity Score Badge */}
-                                            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600">
-                                                <span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-bold">Complexity</span>
-                                                <span className={`text-xs font-bold ${getComplexityColor(selectedCase.complexityScore)}`}>
-                                                    {formatNumber(selectedCase.complexityScore)}/10
-                                                </span>
                                             </span>
                                         </div>
                                         <h2 className="text-3xl font-bold text-gray-900 dark:text-white leading-tight mb-2">{selectedCase.title}</h2>

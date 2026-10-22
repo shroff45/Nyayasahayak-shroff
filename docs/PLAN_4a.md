@@ -67,6 +67,7 @@ And after D28 (PR #9), same command:
 | at 4(a)'s base (`91f34ee`, PR #10 merged) | 150 files (38,648 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — the +19 lines since D33 are three hedge paragraphs in live JSX, so no file count moved. Re-run both §1 commands before the first edit; §6 was measured on exactly this commit. |
 | after 4(a)-iii | 141 files (37,946 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — the 9-file `src/core/types.ts` closure plus golden `AdjournmentRisk` (8 lines of `src/types.ts`). 693 resolver-lines removed (684 by `wc -l`: the resolver counts +1 per file, so the two totals differ by exactly the file count). `reachable` unmoved at 121, which is the signature §6.3 predicted for a purge that touches nothing live. |
 | after 4(a)-i | 141 files (38,022 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — +76 lines in `src/` and no file count moved: -i changed three files' bodies (`legacyCaseAdapter.ts` +49/-6, `ChargeSheetGatePage.tsx`, `App.tsx`) and two gate files (`statute_tests.mjs` 14→18 tests, `ledger_repro.cjs` claim 32). Entry chunk 624,410 B → 625,108 B (+698 B of refusal copy), 34.89 kB under the D35 ratchet. |
+| after 4(a)-ii-b + D39 | 141 files (37,731 lines) / 121 reachable / 20 unreachable — −291 lines. `src/features/main/types.ts`: module importers 12 → 11, `Case` namers 8 → 7 (mockData no longer names the legacy model at all). Total JS 2,497,924 → 2,497,361 B (−563 B) across 92 chunks: the fixture block had been tree-shaken out of the bundle long ago, so this commit's win is in the source model, not the payload. |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -466,10 +467,9 @@ Open truthfulness items 4(a) must not quietly absorb, each with its own home:
 
 | # | commit | contents | predicted census after | proof that must be in the message |
 |---|---|---|---|---|
-| 1 | **4(a)-iii** | delete the 9-file closure + golden `AdjournmentRisk` | 141 / 121 / 20 | `--check` before and after; BFS replay with the set removed (0 live lost, 0 orphaned); `--model src/core/types.ts` = 0 importers; `npm test` 14/14 statute tests **unchanged**, proving the export survived |
+| 1 | **4(a)-iii — DONE (`2a6d6e2`)** | delete the 9-file closure + golden `AdjournmentRisk` | 141 / 121 / 20 | `--check` before and after; BFS replay with the set removed (0 live lost, 0 orphaned); `--model src/core/types.ts` = 0 importers; `npm test` 14/14 statute tests **unchanged**, proving the export survived |
 | 2 | **4(a)-i — DONE (`§6.7`)** | 4 new statute tests, then refusal-for-unknown + `status` derivation | 141 / 121 / 20 (lines move) | FAIL-before / PASS-after per test, pasted; both call sites compile with the union return |
-| 3 | **4(a)-ii-a** | `WorkspaceContext`, `CaseRelationshipMapper`, `geminiService` onto golden via the adapter | unchanged | `--model src/features/main/types.ts`: live namers 8 → 5 (adapter + the three blocked); tsc 0 |
-| 4 | **4(a)-iv** | coercions into the adapter, one test; `LedgerEntry.data` typed; label question answered | unchanged | `readCase`'s different fallback documented in the diff; the `LedgerCase` union still the only join point |
+| 3 | **4(a)-ii-a — VOID, see §6.8** | ~~`WorkspaceContext`, `CaseRelationshipMapper`, `geminiService` onto golden via the adapter~~ | — | measured on the merged base: none of the three is an independent move || 4 | **4(a)-iv** | coercions into the adapter, one test; `LedgerEntry.data` typed; label question answered | unchanged | `readCase`'s different fallback documented in the diff; the `LedgerCase` union still the only join point |
 | — | **needs your ruling** | -ii-b (the five orphan fields) and the §5 done-criterion rewrite | — | not a commit until decided |
 
 Two rules from §3 apply to all four: a type edit and the death of its dead namers are one commit (rule 2), and
@@ -515,3 +515,61 @@ from one computation so the pair cannot drift apart. -iv should upgrade this to 
 Also fixed while here: the pin test read the adapter with a cwd-relative path, which passes under `npm test` and
 fails when the file is run from anywhere else — now resolved against `repoRoot`, verified by running the suite from
 `/tmp` (18/18).
+
+### 6.8 §6.2 was wrong about -ii, and the reason is worth more than the fix
+
+After -iii and -i merged, the three files -ii-a was going to move were re-checked for what actually
+binds them to the legacy shape. **None of the three is an independent move**, for three different
+reasons, all of which say something §6.2 did not:
+
+| file | §6.2 said | measured |
+|---|---|---|
+| `core/context/WorkspaceContext.tsx` | "reads only `id`, can move" | it does not *read* the case, it **owns** it: `allCases: Case[]`, `selectedCase: Case \| null`, `setSelectedCase`, and `readJson<Case[]>` from localStorage. Moving it moves the store, which forces the four blocked files with it |
+| `services/geminiService.ts` | "renamed fields only, can move" | its `Case` arrives as a parameter from `CaseIntakeTriage.tsx:264` — a blocked file. Retyping the service just relocates the error to its caller |
+| `components/CaseRelationshipMapper.tsx` | "renamed fields only, can move" | its only mount passes a **literal `null`** (`App.tsx:169`), so the migration would retype code that never runs. Same for `JusticeTimeline` (`:181`) |
+
+And the fourth entry in the "cannot move" column was wrong too, in the opposite direction: `mockData.ts`
+does not *produce* the store's legacy instances (`getMockCases` has 0 consumers; D39) — it is 261 lines of
+unreachable fixture cases inside a live file, and it was that count (`complexityScore` ×16) that made the
+shape look load-bearing.
+
+So the honest shape of 4(a)'s second half is not "-ii-a now, -ii-b later". It is **one decision with two
+possible orders**: either the store moves to golden and the intake form keeps a draft type (which deletes the
+four orphan fields by construction, resolving D36/D37 as a side-effect), or 4(a) stops at -i and -iii and the
+unification becomes a design PR that also fixes D38's `null` wiring. What cannot be done is the incremental
+version this plan promised, because the type that matters is the store's, and a store has no boundary to
+migrate behind. Recorded here rather than quietly re-scoped, because §3's rule — *re-measure rather than
+quote* — applies to this document's own predictions, and this is the second time measurement has corrected it.
+
+### 6.9 4(a)-ii-b + D39, executed — and what the bundle number proved about my own framing
+
+Your ruling was "delete `complexityScore` from the shape and every reader; `title`/`pii` stay legacy, never
+golden; `userId` parked as D37". That shipped as one commit: the field left `features/main/types.ts`, and in
+`CaseIntakeTriage` the `Math.random()` assignment, both `Omit<Case, …>` lists, the `X/10` badge and
+`getComplexityColor` went with it — `noUnusedLocals: true` is what certifies nothing was left naming a dead
+helper, not my grep. D39 rode along in the same commit (same reasoning as your "fold it into whichever commit
+touches that file"): `mockData.ts` lost `getMockCases` and its 16 fixture cases, keeping only `mockNpsData`, the
+one export anything imported.
+
+Measured: `features/main/types.ts` importers **12 → 11** and `Case` namers **8 → 7**; census 141 files /
+37,731 lines (−291); `tsc` 0, `npm test` 0 (63 + statute **18/18**), harness **32/32**, build 0, total JS
+2,497,924 → **2,497,361 B (−563 B)** over 92 chunks. The entry chunk was byte-identical, which initially looked
+like the edit had no effect: both files are `React.lazy` boundaries, so they are not in the entry chunk at all,
+and your PR #7 ruling ("report total JS and chunk count, never entry-chunk shrink") is what caught me about to
+quote the wrong number. The −563 B is the badge; the 261 removed fixture lines were already tree-shaken out, so
+**D39 changed nothing a user downloads and everything about what the source model requires** — which is worth
+saying plainly, because "we deleted 303 lines" would otherwise read as a performance win it is not.
+
+**-ii-a's status after the attempt, restated so the plan and the tree agree:** the store is still the blocker
+(§6.8), but two of its three files do have a path that doesn't need the store decision — `CaseRelationshipMapper`
+can take golden `Case | null` today because its only mount passes a literal `null`, which is assignable either way,
+and `geminiService` can take golden parameters if its caller in `CaseIntakeTriage:264` adapts through
+`toGoldenCase` and handles the refusal (also the right behaviour: an undated case should not be sent to the model
+for an outcome prediction). Both are small; both are *not* the "8 → 5" the plan promised, and the number that
+actually reflects -ii-a is 7 → 5, with `WorkspaceContext` and the intake screen left for the store ruling.
+
+**D40 is the finding this commit surfaced by accident**, and it is the more interesting half: with the badge gone,
+the only remaining fabricated numbers in that file are four `<StatCard value={3|8|24|156}>` literals under a
+caseload heading (`:345-348`), formatted by the real locale helper so they look measured, while `allCases` sits in
+the same scope uncounted. Claim 30 cannot see them because no titled person stands beside them — which is the
+*shape* of the missing rule, and it is registered rather than fixed.
