@@ -19,7 +19,6 @@ export interface Case {
     invokedActs: string[];
     filingDate: string;
     lastHearingDate: string;
-    complexityScore: number;
     summary: string;
     notes?: string;
     pii?: { [key: string]: string };

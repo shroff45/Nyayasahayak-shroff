@@ -78,7 +78,6 @@ const legacyCase = {
     invokedActs: ['IPC 379'],
     filingDate: '2024-11-20',
     lastHearingDate: '2025-01-10',
-    complexityScore: 4,
     summary: 'Theft caught on CCTV.',
     notes: 'Accused in custody.',
     caseType: 'Criminal',
