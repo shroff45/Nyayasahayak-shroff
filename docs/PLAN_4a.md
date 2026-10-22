@@ -466,10 +466,9 @@ Open truthfulness items 4(a) must not quietly absorb, each with its own home:
 
 | # | commit | contents | predicted census after | proof that must be in the message |
 |---|---|---|---|---|
-| 1 | **4(a)-iii** | delete the 9-file closure + golden `AdjournmentRisk` | 141 / 121 / 20 | `--check` before and after; BFS replay with the set removed (0 live lost, 0 orphaned); `--model src/core/types.ts` = 0 importers; `npm test` 14/14 statute tests **unchanged**, proving the export survived |
+| 1 | **4(a)-iii — DONE (`2a6d6e2`)** | delete the 9-file closure + golden `AdjournmentRisk` | 141 / 121 / 20 | `--check` before and after; BFS replay with the set removed (0 live lost, 0 orphaned); `--model src/core/types.ts` = 0 importers; `npm test` 14/14 statute tests **unchanged**, proving the export survived |
 | 2 | **4(a)-i — DONE (`§6.7`)** | 4 new statute tests, then refusal-for-unknown + `status` derivation | 141 / 121 / 20 (lines move) | FAIL-before / PASS-after per test, pasted; both call sites compile with the union return |
-| 3 | **4(a)-ii-a** | `WorkspaceContext`, `CaseRelationshipMapper`, `geminiService` onto golden via the adapter | unchanged | `--model src/features/main/types.ts`: live namers 8 → 5 (adapter + the three blocked); tsc 0 |
-| 4 | **4(a)-iv** | coercions into the adapter, one test; `LedgerEntry.data` typed; label question answered | unchanged | `readCase`'s different fallback documented in the diff; the `LedgerCase` union still the only join point |
+| 3 | **4(a)-ii-a — VOID, see §6.8** | ~~`WorkspaceContext`, `CaseRelationshipMapper`, `geminiService` onto golden via the adapter~~ | — | measured on the merged base: none of the three is an independent move || 4 | **4(a)-iv** | coercions into the adapter, one test; `LedgerEntry.data` typed; label question answered | unchanged | `readCase`'s different fallback documented in the diff; the `LedgerCase` union still the only join point |
 | — | **needs your ruling** | -ii-b (the five orphan fields) and the §5 done-criterion rewrite | — | not a commit until decided |
 
 Two rules from §3 apply to all four: a type edit and the death of its dead namers are one commit (rule 2), and
@@ -515,3 +514,28 @@ from one computation so the pair cannot drift apart. -iv should upgrade this to 
 Also fixed while here: the pin test read the adapter with a cwd-relative path, which passes under `npm test` and
 fails when the file is run from anywhere else — now resolved against `repoRoot`, verified by running the suite from
 `/tmp` (18/18).
+
+### 6.8 §6.2 was wrong about -ii, and the reason is worth more than the fix
+
+After -iii and -i merged, the three files -ii-a was going to move were re-checked for what actually
+binds them to the legacy shape. **None of the three is an independent move**, for three different
+reasons, all of which say something §6.2 did not:
+
+| file | §6.2 said | measured |
+|---|---|---|
+| `core/context/WorkspaceContext.tsx` | "reads only `id`, can move" | it does not *read* the case, it **owns** it: `allCases: Case[]`, `selectedCase: Case \| null`, `setSelectedCase`, and `readJson<Case[]>` from localStorage. Moving it moves the store, which forces the four blocked files with it |
+| `services/geminiService.ts` | "renamed fields only, can move" | its `Case` arrives as a parameter from `CaseIntakeTriage.tsx:264` — a blocked file. Retyping the service just relocates the error to its caller |
+| `components/CaseRelationshipMapper.tsx` | "renamed fields only, can move" | its only mount passes a **literal `null`** (`App.tsx:169`), so the migration would retype code that never runs. Same for `JusticeTimeline` (`:181`) |
+
+And the fourth entry in the "cannot move" column was wrong too, in the opposite direction: `mockData.ts`
+does not *produce* the store's legacy instances (`getMockCases` has 0 consumers; D39) — it is 261 lines of
+unreachable fixture cases inside a live file, and it was that count (`complexityScore` ×16) that made the
+shape look load-bearing.
+
+So the honest shape of 4(a)'s second half is not "-ii-a now, -ii-b later". It is **one decision with two
+possible orders**: either the store moves to golden and the intake form keeps a draft type (which deletes the
+four orphan fields by construction, resolving D36/D37 as a side-effect), or 4(a) stops at -i and -iii and the
+unification becomes a design PR that also fixes D38's `null` wiring. What cannot be done is the incremental
+version this plan promised, because the type that matters is the store's, and a store has no boundary to
+migrate behind. Recorded here rather than quietly re-scoped, because §3's rule — *re-measure rather than
+quote* — applies to this document's own predictions, and this is the second time measurement has corrected it.
