@@ -10,8 +10,22 @@
 // read-time projection lives in `shared/utils/ledgerRecords.ts`, where it can preserve the bytes
 // that were written while offering current screens a canonical view.
 
-import type { Case as LegacyCase } from '../../features/main/types';
 import type { Case, CaseStatus, UrgencyLevel } from '../../types';
+
+/** The historical cache shape, private to the one migration boundary that still needs to read it. */
+type LegacyCase = {
+    id: string;
+    caseNumber: string;
+    petitioner: string;
+    respondent: string;
+    invokedActs: string[];
+    filingDate: string;
+    lastHearingDate: string;
+    summary: string;
+    notes?: string;
+    priority?: 'High' | 'Medium' | 'Low';
+    caseType: string;
+};
 import { BNS_EFFECTIVE_DATE } from '../services/forensicInterlock';
 
 /** The one marker covers every per-user `nyaya:cases:<owner>` key. */

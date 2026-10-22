@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob, Part } from "@google/genai";
 import { geminiService } from '../services/geminiService';
 import { contentModeration } from '../services/contentModeration';
-import { ChatMessage, User } from '../types';
+import type { ChatMessage, User } from '../../../types';
 import Spinner from './common/Spinner';
 import { gsap } from 'gsap';
 import { fileToBase64 } from '../lib/utils';

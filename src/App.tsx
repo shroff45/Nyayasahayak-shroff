@@ -21,7 +21,7 @@ import LandingPage from './shared/layout/LandingPage';
 // this build: entry chunk 592.33 kB -> 575.12 kB. The app promises to work on a 2G courthouse
 // connection, so the promise gets kept rather than the budget raised.
 import { useLocalization, Language } from './features/main/hooks/useLocalization';
-import { ChatMessage } from './features/main/types';
+import type { ChatMessage } from './types';
 import { ToastProvider } from './shared/hooks/useToast';
 import { WorkspaceProvider, useWorkspace } from './core/context/WorkspaceContext';
 import { toPresentableGoldenCase } from './core/workspace/legacyCaseAdapter';

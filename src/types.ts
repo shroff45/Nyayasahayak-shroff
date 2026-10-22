@@ -27,6 +27,48 @@ export interface Case {
     applicableLaw: 'IPC' | 'BNS'; // Derived from incidentDate
 }
 
+/**
+ * Feature contracts that used to share the intake Case module only by proximity. They do not name
+ * a case field and their consumers are live after the case migration, so they belong with the
+ * canonical app contract rather than keeping `features/main/types.ts` alive as a type warehouse.
+ */
+export interface User {
+    email: string;
+}
+
+export interface HistoryItem {
+    id: string;
+    timestamp: string;
+    type: 'CASE_CREATED' | 'DOCUMENT_ANALYZED' | 'CHAT_MESSAGE' | 'ARGUMENT_ANALYZED' | 'AUDIO_TRANSCRIBED' | 'QUANTUM_FINGERPRINT_GENERATED' | 'DOCUMENT_VERIFIED';
+    details: string;
+}
+
+export interface PredictionResult {
+    priority: 'High' | 'Medium' | 'Low';
+    rationale: string;
+    contributingFactors: string[];
+    legalCitations: string[];
+}
+
+export interface DocumentAnalysisResult {
+    summary: string;
+    severity: 'High' | 'Medium' | 'Low';
+    confidenceScore: number;
+    recommendedCourt: string;
+    keyLegalIssues: string[];
+    identifiedEntities: { name: string; type: string; }[];
+    potentialPrecedents: string[];
+    riskScore?: number;
+    entities?: string[];
+    sentiment?: string;
+}
+
+export interface ChatMessage {
+    role: 'user' | 'model' | 'system';
+    content: string;
+    sources?: string[];
+}
+
 export interface VisualCard {
     icon: string;
     heading: string;
