@@ -240,7 +240,7 @@ Re-run the proof:
 node tools/ledger_repro.cjs          # 33 claims, exit non-zero if any fails
 npm test                             # 63 tests (trust primitives, ledger, custody, the s.63
                                      # certificate document, the persistence probe, the citizen
-                                     # intake's round trip through the real façade) + 14 statutory
+                                     # intake's round trip through the real façade) + 19 statutory
                                      # tests
 npx playwright test                  # one chained journey in a real browser, against the build
 ```

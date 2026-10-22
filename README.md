@@ -136,7 +136,7 @@ CI is a single job (`.github/workflows/ci.yml`) running all of this on every pul
 npm run typecheck             # tsc over the app and over the e2e project; 0 errors in both
 npm test                      # 63 node tests (trust primitives, ledger, custody, the s.63
                               # certificate, the intake's round trip through the real façade, the
-                              # session signature) + 14 statutory tests over the commencement dates
+                              # session signature) + 19 statutory tests over the commencement dates
 node tools/ledger_repro.cjs   # 33 claims this repository makes about itself; non-zero exit if a
                               # sentence in the app stops matching its code
 npm run build                 # then tools/check_bundle_size.mjs: every asset under 660,000 bytes
