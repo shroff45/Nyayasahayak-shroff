@@ -117,6 +117,22 @@ test('a case whose incident predates commencement is reported under the IPC', ()
     assert.equal(older.applicableLaw, 'IPC');
 });
 
+// 4(a)-ii-a pins what the AI triage call is allowed to see. `geminiService.predictCaseOutcome` serialises
+// the whole record into the prompt, so the golden field names ARE the interface with the model - and a type
+// move that renames them is a behaviour change. Asserting the key set here means it cannot drift again while
+// every caller still compiles.
+test('the model is shown the golden shape, and the three fields it drops are dropped on purpose', () => {
+    const keys = Object.keys(goldenOf(legacyCase));
+    for (const k of ['cnrNumber', 'complainant', 'respondent', 'sectionsInvoked', 'incidentDate', 'applicableLaw']) {
+        assert.ok(keys.includes(k), `golden prompt must carry ${k}`);
+    }
+    // `title` is UI chrome, `lastHearingDate` is scheduling state, `pii` is the table that would undo the
+    // redaction. None of the three exists on the golden shape, so none reaches the provider.
+    for (const k of ['title', 'lastHearingDate', 'pii', 'caseNumber', 'petitioner', 'invokedActs', 'notes', 'priority']) {
+        assert.ok(!keys.includes(k), `the prompt must not carry ${k}`);
+    }
+});
+
 // ------------------------------------------------------------------------ 4(a)-i / the date question
 //
 // Section A pins the fail-safe: an unknown date means the older, more lenient code, because

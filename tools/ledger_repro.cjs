@@ -1328,6 +1328,33 @@ const main = async () => {
                       + 'denominator stays auditable.')
     );
 
+    // --------------------------------------------------------------------------- 4(a)-ii-a / claim 33
+    //
+    // geminiService used to import `Case` from the legacy intake model, and the record it serialises into
+    // the prompt IS the interface with the model: renaming the type without renaming the payload is the
+    // same change, and a payload nobody asserts can be renamed back by anyone who finds it convenient. So
+    // two facts get pinned here: the service names the golden model (not the intake one), and every live
+    // caller reaches it through the adapter with the refusal handled - an unguarded caller would be a
+    // prediction about a case whose applicable criminal code was guessed.
+    const GS = 'src/features/main/services/geminiService.ts';
+    const gsCode = codeOnly(GS);
+    const legacyCaseImport = /import\s*(?:type\s*)?\{[^}]*\bCase\b[^}]*\}\s*from\s*["']\.\.\/types["']/.test(gsCode);
+    const goldenCaseImport = /import\s*(?:type\s*)?\{[^}]*\bCase\b[^}]*\}\s*from\s*["']\.\.\/\.\.\/\.\.\/types["']/.test(gsCode);
+    const callers = srcFiles.filter((f) => reachable.has(f) && f !== GS && /\bpredictCaseOutcome\s*\(/.test(codeOnly(f)));
+    const unguarded = callers.filter((f) => {
+        const code = codeOnly(f);
+        return !/toGoldenCase\s*\(/.test(code) || !/\.ok\b/.test(code);
+    });
+    check(
+        'The AI triage call is shown the golden shape by a caller that handles the refusal',
+        goldenCaseImport && !legacyCaseImport && callers.length >= 1 && unguarded.length === 0,
+        `geminiService imports golden Case: ${goldenCaseImport}; still imports the intake Case: ${legacyCaseImport}. `
+            + `${callers.length} live caller file(s) of predictCaseOutcome (${callers.join(', ') || 'none'}) - a count of zero `
+            + `would make this vacuous, so it fails. `
+            + (unguarded.length ? `callers without adapter+refusal handling: ${unguarded.join(', ')}`
+                : 'every caller adapts via toGoldenCase and tests `ok`, so an undated case is never sent for prediction.')
+    );
+
     console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);
     if (fail === 0) {
         console.log('Verdict: the ledger does the three things the app asks of it - it detects');

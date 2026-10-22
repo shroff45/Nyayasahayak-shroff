@@ -1,6 +1,20 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse, Part } from "@google/genai";
-import { PredictionResult, Case, DocumentAnalysisResult, ChatMessage } from "../types";
+import { PredictionResult, DocumentAnalysisResult, ChatMessage } from "../types";
+// 4(a)-ii-a: the case the model is asked about is the golden shape, not the legacy intake record. This is
+// not a cosmetic swap and it is not a side effect: `predictCaseOutcomeInternal` sends
+// `JSON.stringify(sanitizedCase)` as the prompt, so the model now reads `cnrNumber`/`complainant`/
+// `sectionsInvoked` where it used to read `caseNumber`/`petitioner`/`invokedActs`, and it no longer
+// receives three fields the golden shape does not carry:
+//   * `title` - UI chrome the user typed, not case data;
+//   * `lastHearingDate` - scheduling state, not a triage input;
+//   * `pii` - the inverse of redaction. It mapped real names to their placeholders, so sending it to an
+//     external API handed the recipient the very table that could undo the redaction. The values in the
+//     record are still redacted (`piiService.redact` mutates them before this call), so the model sees
+//     redacted text without the key to reverse it. Losing all three is the point.
+// The key names are pinned by `tools/statute_tests.mjs` section B and claim 33 in the harness, so this
+// contract cannot quietly change again while every caller still compiles.
+import type { Case } from "../../../types";
 import { withErrorRecovery } from "../lib/withErrorRecovery";
 
 /**
