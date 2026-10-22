@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { geminiService } from '../services/geminiService';
 import { legalParser } from '../services/legalParser';
-import { DocumentAnalysisResult, HistoryItem } from '../types';
+import type { DocumentAnalysisResult, HistoryItem } from '../../../types';
 import { fileToBase64 } from '../lib/utils';
 import Spinner from './common/Spinner';
 

@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { PredictionResult, HistoryItem } from '../types';
-import type { Case } from '../../../types';
+import type { Case, HistoryItem, PredictionResult } from '../../../types';
 import { geminiService } from '../services/geminiService';
 import { piiService } from '../services/piiService';
 import { applicableLawFor, toPresentableGoldenCase } from '../../../core/workspace/legacyCaseAdapter';

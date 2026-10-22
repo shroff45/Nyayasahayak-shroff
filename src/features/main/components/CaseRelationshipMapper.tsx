@@ -5,7 +5,7 @@ import React, { useEffect, useRef } from 'react';
 // already call the same four facts, so a case shown here and a case shown in the draft-judgment panel
 // cannot drift apart. The mount in `App.tsx` still passes a literal `null` (D38), so this type is today
 // satisfied by nothing but a null - the retype is deliberate groundwork for wiring it through
-// `toGoldenCase` in -iv, and an empty state (not a compiler error) is what hides D38.
+// WorkspaceContext's golden store in -iv(b), and an empty state (not a compiler error) is what hides D38.
 import type { Case } from '../../../types';
 import { gsap } from 'gsap';
 import AnimatedPageWrapper from './common/AnimatedPageWrapper';

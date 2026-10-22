@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { HistoryItem } from '../types';
+import type { HistoryItem } from '../../../types';
 import AnimatedPageWrapper from './common/AnimatedPageWrapper';
 
 interface HistoryProps {

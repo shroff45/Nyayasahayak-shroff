@@ -71,6 +71,7 @@ And after D28 (PR #9), same command:
 | after 4(a)-ii-a (achievable half) | 141 files (37,774 lines) / 121 reachable / 20 unreachable — `CaseRelationshipMapper` is golden and `geminiService` receives golden data through a refusal-handling boundary. Module importers 11 → 10; the resolver's cross-module *file* census says `Case` namers 7 → **6**, not the predicted 5: `geminiService` names golden `Case` but still imports three non-case types from the legacy module, so the module remains live. |
 | after 4(a)-iv(a) | 141 files (37,857 lines) / 121 reachable / 20 unreachable — a `GateCaseRow` union makes every undated charge-sheet case an explicit disabled row; `LedgerEntry.data` is `unknown`, so a journal payload must be narrowed before a screen reads it. No persistence key changed in this commit. |
 | after 4(a)-iv(b) | 141 files (38,006 lines) / 121 reachable / 20 unreachable — the mutable workspace is golden-v1; live legacy-module importers 10 → 8 and the cross-module `Case` namer census 6 → 4. The four are not four legacy-shape readers: `WorkspaceContext`, `CaseIntakeTriage`, and `geminiService` still import non-case types from the legacy module while naming golden `Case`; only `legacyCaseAdapter` actually describes historical fields. -iv(c) relocates those types, then deletes the module. |
+| after 4(a)-iv(c) | 140 files (38,004 lines) / 120 reachable / 20 unreachable — `features/main/types.ts` is deleted. The five surviving non-case contracts moved to `src/types.ts`; the historical workspace record shape is private to `legacyCaseAdapter.ts`. `--check` is the existence proof: no unresolved import and the removed module cannot be named by the model resolver. |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -656,3 +657,26 @@ adapter.
 D41 is also closed here as harness claim 34. It executes the statutory suite and compares its own
 printed pass count with the counts in both command examples; a docs-only `22 → 21` plant and an
 extra-passing-test plant both fail claim 34, then the restored tree returns 34/34.
+
+
+### 6.13 4(a)-iv(c), executed — the legacy module is gone, not merely unused
+
+The remaining exports in `features/main/types.ts` were not all part of the legacy case shape:
+`PredictionResult`, `DocumentAnalysisResult`, `ChatMessage`, `HistoryItem`, and `User` were live
+feature contracts sharing a file only by proximity. They moved unchanged to `src/types.ts`; their
+importers moved with them. `legacyCaseAdapter.ts` has the one private `LegacyCase` declaration still
+needed to describe *historical* workspace JSON, so deleting the module does not pretend the old
+schema never existed or expose it again as an app-wide alternative.
+
+Then the file was deleted in the same refactor. The evidence is stronger than an empty grep: `tsc` is
+zero, resolver `--check` is 140 files / 120 reachable / 0 unresolved, and asking the resolver to
+model the old path errors because the path no longer exists. The direct path search finds one
+intentional explanatory comment in `src/types.ts`, no import. This is the distinction the -ii-a
+census made visible: the b commit made consumers golden; this commit removes the unrelated type
+imports that had still made their *files* look legacy-bound.
+
+The -iv sequence therefore stops here, as ruled: (a) undated charge-sheet records are disabled rows
+and ledger JSON is unknown, (b) mutable workspaces are golden-v1 while signed journals stay
+projected-on-read, (c) the legacy shared module is deleted. D38 (the two `selectedCase={null}`
+routes) remains a separately registered feature decision; D40's fabricated dashboard statistics
+remain a separately registered honesty-rule gap. Neither is folded into a model refactor.

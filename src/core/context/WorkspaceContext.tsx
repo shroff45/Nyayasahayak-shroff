@@ -17,8 +17,7 @@ import React, {
     useState,
 } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import type { Case } from '../../types';
-import type { HistoryItem } from '../../features/main/types';
+import type { Case, HistoryItem } from '../../types';
 import { migrateWorkspaceStorage } from '../workspace/legacyCaseAdapter';
 
 /** Cap on the persisted activity log so localStorage cannot grow without bound. */
