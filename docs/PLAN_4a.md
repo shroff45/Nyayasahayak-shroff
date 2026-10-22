@@ -65,6 +65,7 @@ And after D28 (PR #9), same command:
 | after D29 | 151 files (39196 lines) / 123 reachable / 28 unreachable (3159 lines, 8.1 % of `src/`) — and `reachable` fell to 123, because D29 deleted a *live* screen rather than a dead file |
 | after D33 | 150 files (38,629 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — `reachable` fell by 2: the sandbox was routed, and its only consumer of `CognizanceReview.tsx` was itself |
 | at 4(a)'s base (`91f34ee`, PR #10 merged) | 150 files (38,648 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — the +19 lines since D33 are three hedge paragraphs in live JSX, so no file count moved. Re-run both §1 commands before the first edit; §6 was measured on exactly this commit. |
+| after 4(a)-iii | 141 files (37,946 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — the 9-file `src/core/types.ts` closure plus golden `AdjournmentRisk` (8 lines of `src/types.ts`). 693 resolver-lines removed (684 by `wc -l`: the resolver counts +1 per file, so the two totals differ by exactly the file count). `reachable` unmoved at 121, which is the signature §6.3 predicted for a purge that touches nothing live. |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
