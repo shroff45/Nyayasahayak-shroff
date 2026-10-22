@@ -1284,6 +1284,50 @@ const main = async () => {
         + `fails here, which is the case that had no gate until D34.`
     );
 
+    // --------------------------------------------------------------------------- 4(a)-i / claim 32
+    //
+    // The adapter now answers with a result rather than a Case, because a record with no date must not
+    // pick a criminal code for itself (Art. 20(1); see legacyCaseAdapter.ts). A refusal nobody handles is
+    // the same defect with an extra step, so the rule is mechanical: every *live* caller must look at the
+    // discriminant, and none may read a field off an untested result. The floor is the part that matters -
+    // a rule over an empty set passes by construction, which is how several of this file's earlier checks
+    // would have behaved against a deleted directory. Here the floor is a measured count of callers, so a
+    // third caller that ignores the refusal cannot be added quietly, and neither can the callers vanish.
+    const ADAPTED = srcFiles.filter((f) =>
+        reachable.has(f) && !f.endsWith('legacyCaseAdapter.ts') && /\btoGoldenCase\s*\(/.test(codeOnly(f)));
+    const unhandled = [];
+    for (const file of ADAPTED) {
+        const code = codeOnly(file);                       // comments stripped: a note cannot satisfy this
+        // An escape hatch in a caller is the refusal being discarded, whatever the guard looks like.
+        const escape = code.match(/\bas any\b|@ts-ignore|\bas unknown as/g);
+        if (escape) unhandled.push(`${file} (escape hatch: ${escape[0]})`);
+        // A file-wide `\.ok` test is not enough: it can sit in unrelated JSX while the real consumer
+        // casts the result straight to a Case. So the rule is per binding - every variable assigned from
+        // toGoldenCase must be guarded within the statement that follows it.
+        const bindings = [...code.matchAll(/(?:const|let)\s+(\w+)\s*=\s*[^;\n]*?toGoldenCase\s*\([^)]*\)[^;]*;/g)];
+        if (!bindings.length) unhandled.push(`${file} (calls toGoldenCase without binding its result)`);
+        for (const m of bindings) {
+            const name = m[1];
+            const after = code.slice(m.index, m.index + 600);
+            const guarded = new RegExp(`${name}\\??\\.ok\\b`).test(after);
+            const bare = new RegExp(`${name}\\.(?!ok\\b|case\\b|reason\\b|missing\\b)[a-zA-Z]`).test(code);
+            if (!guarded) unhandled.push(`${file}: ${name} bound from toGoldenCase and never tested for .ok nearby`);
+            if (bare) unhandled.push(`${file}: ${name}.<field> read off the untested result`);
+        }
+    }
+    check(
+        'Every live caller of toGoldenCase guards the refusal at the binding',
+        ADAPTED.length >= 2 && unhandled.length === 0,
+        ADAPTED.length < 2
+            ? `only ${ADAPTED.length} live caller file(s) found (${ADAPTED.join(', ') || 'none'}) - a rule over fewer than two callers is not a rule, so this fails rather than passing vacuously`
+            : `${ADAPTED.length} live caller file(s) measured (${ADAPTED.join(', ')}); `
+                + (unhandled.length ? `unhandled refusal: ${unhandled.join(' | ')}`
+                    : 'every binding from toGoldenCase is tested for `ok` within the statement that follows it, no field is read off an untested result, '
+                      + 'and no caller casts its way past the union. The refusal is also rendered, not swallowed: App.tsx replaces the '
+                      + 'draft-judgment panel with the reason, and ChargeSheetGatePage counts the excluded cases aloud so the s.176(3) '
+                      + 'denominator stays auditable.')
+    );
+
     console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);
     if (fail === 0) {
         console.log('Verdict: the ledger does the three things the app asks of it - it detects');

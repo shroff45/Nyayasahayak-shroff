@@ -66,6 +66,7 @@ And after D28 (PR #9), same command:
 | after D33 | 150 files (38,629 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — `reachable` fell by 2: the sandbox was routed, and its only consumer of `CognizanceReview.tsx` was itself |
 | at 4(a)'s base (`91f34ee`, PR #10 merged) | 150 files (38,648 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — the +19 lines since D33 are three hedge paragraphs in live JSX, so no file count moved. Re-run both §1 commands before the first edit; §6 was measured on exactly this commit. |
 | after 4(a)-iii | 141 files (37,946 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — the 9-file `src/core/types.ts` closure plus golden `AdjournmentRisk` (8 lines of `src/types.ts`). 693 resolver-lines removed (684 by `wc -l`: the resolver counts +1 per file, so the two totals differ by exactly the file count). `reachable` unmoved at 121, which is the signature §6.3 predicted for a purge that touches nothing live. |
+| after 4(a)-i | 141 files (38,022 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — +76 lines in `src/` and no file count moved: -i changed three files' bodies (`legacyCaseAdapter.ts` +49/-6, `ChargeSheetGatePage.tsx`, `App.tsx`) and two gate files (`statute_tests.mjs` 14→18 tests, `ledger_repro.cjs` claim 32). Entry chunk 624,410 B → 625,108 B (+698 B of refusal copy), 34.89 kB under the D35 ratchet. |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -466,7 +467,7 @@ Open truthfulness items 4(a) must not quietly absorb, each with its own home:
 | # | commit | contents | predicted census after | proof that must be in the message |
 |---|---|---|---|---|
 | 1 | **4(a)-iii** | delete the 9-file closure + golden `AdjournmentRisk` | 141 / 121 / 20 | `--check` before and after; BFS replay with the set removed (0 live lost, 0 orphaned); `--model src/core/types.ts` = 0 importers; `npm test` 14/14 statute tests **unchanged**, proving the export survived |
-| 2 | **4(a)-i** | 4 new statute tests, then refusal-for-unknown + `status` derivation | 141 / 121 / 20 (lines move) | FAIL-before / PASS-after per test, pasted; both call sites compile with the union return |
+| 2 | **4(a)-i — DONE (`§6.7`)** | 4 new statute tests, then refusal-for-unknown + `status` derivation | 141 / 121 / 20 (lines move) | FAIL-before / PASS-after per test, pasted; both call sites compile with the union return |
 | 3 | **4(a)-ii-a** | `WorkspaceContext`, `CaseRelationshipMapper`, `geminiService` onto golden via the adapter | unchanged | `--model src/features/main/types.ts`: live namers 8 → 5 (adapter + the three blocked); tsc 0 |
 | 4 | **4(a)-iv** | coercions into the adapter, one test; `LedgerEntry.data` typed; label question answered | unchanged | `readCase`'s different fallback documented in the diff; the `LedgerCase` union still the only join point |
 | — | **needs your ruling** | -ii-b (the five orphan fields) and the §5 done-criterion rewrite | — | not a commit until decided |
@@ -474,3 +475,43 @@ Open truthfulness items 4(a) must not quietly absorb, each with its own home:
 Two rules from §3 apply to all four: a type edit and the death of its dead namers are one commit (rule 2), and
 re-measure rather than quote — including this section, which was true when it was written and will be checked
 again at every step.
+
+### 6.7 4(a)-i, executed — what landed, and one gate that had to be rebuilt before it was trusted
+
+`toGoldenCase` now returns `{ ok: true; case: Case } | { ok: false; missing: 'incidentDate'; reason: string }`.
+No `|| today` survives anywhere in `src/`; the status literal became
+`legacy.lastHearingDate ? 'HEARING' : 'FILED'`; `adjournmentsCount: 0` and `isZeroFir: false` stayed literals and
+are now pinned by a test that passes them an input claiming `adjournmentsCount: 7` and asserts the answer is still
+0, i.e. that the field is a default and never a measurement. `applicableLawFor`'s export was left alone, per the
+correction in §3 rule 3. The `statute_tests.mjs` concession comment about the filing-date proxy was **extended, not
+deleted** — -i made the *missing* date refuse, the substitution itself is Block 3's, and the comment is the only
+place that debt is recorded.
+
+Proofs, both directions, in the commit that shipped them:
+- **FAIL before** (tests written first, against the unchanged adapter): `=== SUMMARY: 14 passed, 4 failed ===` —
+  refusal, result-shape, `HEARING`, and the pin (whose before-failure is only the missing `.case`, disclosed in the
+  test's own comment rather than smoothed over).
+- **PASS after**: `18 passed, 0 failed`, `tsc` 0 across the whole project, `npm test` exit 0 with `# pass 63` above
+  it, harness `32/32`, `--check` ok, build 0, entry chunk +698 B inside the D35 byte budget.
+- **The blast radius was the type system's, not my grep's**: `tsc` reported exactly four errors at exactly two call
+  sites, which is the evidence that no third consumer exists.
+
+**Claim 32 needed two attempts, and the first one is the lesson.** Written as "the file that calls `toGoldenCase`
+tests `.ok` somewhere", it *passed* against a deliberately broken caller — `App.tsx` still mentions `.ok` in an
+unrelated JSX branch, so a file-wide regex was satisfied while the real consumer cast the result straight to a
+`Case`. The rule is now per **binding**: every variable assigned from `toGoldenCase` must be guarded within the
+statement that follows it, no field may be read off an untested result, and `as any` / `as unknown as` /
+`@ts-ignore` in a caller count as the refusal being discarded. Two plants redden it (`as any` escape, and simply
+dropping the guard); the restored tree is green. The floor — fewer than two live caller files is a *failure*, not
+a pass — is the same defence against a rule that outlives its subjects that claim 31 added for the count.
+
+**One deviation from the ruling, disclosed.** The instruction was to *disable rather than hide* the undatable
+cases in `ChargeSheetGatePage`. A greyed row needs a field on the page's `LedgerCase` view type, which is a
+view-model change belonging to -iv; what shipped is the auditable half of the ruling — the excluded cases are
+**counted aloud by name** under the list ("N cases listed below cannot be gated: no incident or filing date is
+recorded… (ids)"), so the s.176(3) denominator never shrinks silently, and the memo returns `{ cases, gateExclusions }`
+from one computation so the pair cannot drift apart. -iv should upgrade this to per-row disabled rendering.
+
+Also fixed while here: the pin test read the adapter with a cwd-relative path, which passes under `npm test` and
+fails when the file is run from anywhere else — now resolved against `repoRoot`, verified by running the suite from
+`/tmp` (18/18).

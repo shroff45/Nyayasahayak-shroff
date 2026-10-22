@@ -85,7 +85,16 @@ const legacyCase = {
     priority: 'High',
     userId: 'citizen-9',
 };
-const golden = toGoldenCase(legacyCase);
+const { readFileSync } = await import('node:fs');
+
+// The adapter returns a result now, so section B unwraps it through one helper that fails loudly:
+// a test that silently read `undefined.cnrNumber` would be a green test about nothing.
+const goldenOf = (rec) => {
+    const r = toGoldenCase(rec);
+    assert.equal(r.ok, true, `the fixture should be presentable, but the adapter refused: ${r.ok ? '' : r.reason}`);
+    return r.case;
+};
+const golden = goldenOf(legacyCase);
 test('the fields the judge panels read are populated from the intake record', () => {
     assert.equal(golden.cnrNumber, 'DL/2024/00001');
     assert.equal(golden.complainant, 'State of Delhi');
@@ -94,15 +103,71 @@ test('the fields the judge panels read are populated from the intake record', ()
     assert.equal(golden.caseNotes, 'Accused in custody.');
 });
 test('applicableLaw is derived from the incident, never copied from the caller', () => {
-    // The intake screen does not capture an incident date, so the adapter falls back to the
-    // filing date and derives the code from it - visible here, and the reason the intake form
-    // should collect the incident date explicitly (Block 3).
+    // SUBSTITUTION, still live, and the debt this test records. The intake screen does not capture an
+    // incident date, so the adapter uses the filing date as its stand-in. 4(a)-i changed what happens
+    // when there is *no* date (a refusal, tested below) - it did NOT remove this proxy, and cannot:
+    // removing it needs a field on the intake form, which is Block 3. So a conduct on 2024-06-28 filed
+    // on 2024-07-05 still answers BNS, an Art. 20(1) direction error by exactly one filing's worth of
+    // days. This comment stays until the form collects the date; deleting it would erase the only
+    // record that the debt is known.
     assert.equal(golden.incidentDate, '2024-11-20');
     assert.equal(golden.applicableLaw, 'BNS');
 });
 test('a case whose incident predates commencement is reported under the IPC', () => {
-    const older = toGoldenCase({ ...legacyCase, filingDate: '2024-05-01' });
+    const older = goldenOf({ ...legacyCase, filingDate: '2024-05-01' });
     assert.equal(older.applicableLaw, 'IPC');
+});
+
+// ------------------------------------------------------------------------ 4(a)-i / the date question
+//
+// Section A pins the fail-safe: an unknown date means the older, more lenient code, because
+// Article 20(1) forbids reaching for the harsher one on a guess. `toGoldenCase` used to defeat that
+// by substituting *today* whenever a record had no filing date - and today is always after
+// 01-07-2024, so "unknown" resolved to BNS. Records reach the adapter from localStorage
+// (`WorkspaceContext.tsx:42` does `JSON.parse(raw) as Case[]`, an unchecked cast), so a record
+// without the field is not hypothetical. These four tests are the difference between "the adapter
+// should not do that" and "it cannot".
+test('a record with no filing date is refused rather than dated today', () => {
+    const r = toGoldenCase({ ...legacyCase, filingDate: '' });
+    assert.equal(r.ok, false, 'an undated record must not produce a Case');
+    assert.equal(r.missing, 'incidentDate');
+    assert.match(r.reason, /incident date|date/i);
+    assert.equal(r.case, undefined, 'a refusal must not smuggle a Case alongside the refusal');
+});
+
+test('toGoldenCase answers with a result, not a bare Case', () => {
+    // The shape is the rule: a caller that must look at `ok` cannot accidentally render a Case
+    // whose statute was guessed. This fails before the change by construction, which is the point.
+    const r = toGoldenCase(legacyCase);
+    assert.ok('ok' in r, 'toGoldenCase must return a discriminated result');
+    assert.equal(r.ok, true);
+    assert.ok(r.case && typeof r.case === 'object');
+});
+
+test('a case that has sat is not reported as never having sat', () => {
+    // `lastHearingDate` is required on the legacy model and was simply never read, while `status`
+    // was hard-coded to FILED. Deriving it needs no change to either shape: HEARING is already a
+    // member of golden CaseStatus.
+    const sat = toGoldenCase({ ...legacyCase, lastHearingDate: '2025-01-10' });
+    assert.equal(sat.case.status, 'HEARING');
+    const never = toGoldenCase({ ...legacyCase, lastHearingDate: '' });
+    assert.equal(never.case.status, 'FILED', 'no hearing recorded is the only case that may say FILED');
+});
+
+test('the adjournment count is a default, not a measurement', () => {
+    // PIN. Its before-state failure is only the union's shape (`.case` did not exist); the two
+    // assertions themselves would pass either way, which is the point - they pin behaviour that must
+    // NOT change. `adjournmentsCount: 0` and
+    // `isZeroFir: false` are the two remaining hard-coded fields, and they are honest only because
+    // nothing upstream records an adjournment (D30: the journal has no ADJOURNMENT kind). If a
+    // future writer starts deriving a count, this test must be edited to say where the number comes
+    // from - which is the whole reason it exists.
+    const r = toGoldenCase({ ...legacyCase, adjournmentsCount: 7, isZeroFir: true });
+    assert.equal(r.case.adjournmentsCount, 0, 'the legacy model has no adjournment field to read');
+    assert.equal(r.case.isZeroFir, false);
+    const src = readFileSync(path.join(repoRoot, 'src/core/workspace/legacyCaseAdapter.ts'), 'utf8');
+    assert.match(src, /no adjournment|not a measurement|default/i,
+        'the two literals must be described as defaults in the file that writes them');
 });
 
 console.log('\n=== C. BNSS s.176(3) interlock respects the same boundary ===');

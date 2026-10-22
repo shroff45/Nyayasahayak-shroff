@@ -254,7 +254,11 @@ const DraftJudgmentWrapper: React.FC = () => {
     const [draft, setDraft] = useState('');
 
     // DraftJudgmentPanel speaks the golden-key Case shape; intake stores the legacy one.
-    const goldenSelected = selectedCase ? toGoldenCase(selectedCase) : null;
+    // The adapter refuses a record it cannot date (an assumed date could apply the BNS to conduct
+    // that predates it, contrary to Art. 20(1)), and the refusal is shown in place of the panel:
+    // a draft judgment must not carry an applicable law that was guessed at.
+    const goldenResult = selectedCase ? toGoldenCase(selectedCase) : null;
+    const goldenSelected = goldenResult?.ok ? goldenResult.case : null;
 
     return (
         <div className="space-y-4">
@@ -285,7 +289,15 @@ const DraftJudgmentWrapper: React.FC = () => {
                     <span className="text-xs text-emerald-400">Draft generated ({draft.length} chars)</span>
                 )}
             </div>
-            <React.Suspense fallback={<LoadingFallback />}>
+            {goldenResult && !goldenResult.ok ? (
+                <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+                    <p className="font-bold text-amber-300">
+                        This case cannot be presented for a draft judgment.
+                    </p>
+                    <p className="mt-1 text-slate-300">{goldenResult.reason}</p>
+                </div>
+            ) : (
+                <React.Suspense fallback={<LoadingFallback />}>
                 <DraftJudgmentPanel
                     t={t}
                     caseData={goldenSelected}
@@ -295,7 +307,8 @@ const DraftJudgmentWrapper: React.FC = () => {
                         logActivity('DOCUMENT_ANALYZED', `Draft order generated for ${goldenSelected?.cnrNumber ?? 'case'}`);
                     }}
                 />
-            </React.Suspense>
+                </React.Suspense>
+            )}
         </div>
     );
 };
