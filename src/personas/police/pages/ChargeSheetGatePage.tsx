@@ -84,14 +84,30 @@ const ChargeSheetGatePage: React.FC = () => {
 
     // Cases in the journal first; the intake workspace fills the gaps, adapted to the same keys so
     // one screen can read both without the split-brain the ledger was built to remove.
-    const cases = useMemo<LedgerCase[]>(() => {
+    // `toGoldenCase` returns a result, not a Case (see the adapter's header), so a record this app
+    // cannot date is *named* here rather than dropped: the list below shows the cases the interlock
+    // can evaluate, and the line under it counts the ones it cannot. Hiding them entirely would
+    // shrink the gate's denominator silently, which is the same class of defect the refusal exists to
+    // stop. Both halves come out of one memo, so the pair cannot drift apart.
+    const { cases, gateExclusions } = useMemo(() => {
         const fromLedger = listCases(records);
         const seen = new Set(fromLedger.map((entry) => entry.id));
-        const fromWorkspace = allCases
-            .filter((entry) => !seen.has(entry.id))
-            .map((entry) => {
-                const golden = toGoldenCase(entry);
-                return {
+        const fromWorkspace: LedgerCase[] = [];
+        const excluded: { id: string; label: string; reason: string }[] = [];
+        for (const entry of allCases) {
+            if (seen.has(entry.id)) continue;
+            const result = toGoldenCase(entry);
+            if (!result.ok) {
+                excluded.push({
+                    id: entry.id,
+                    label: `${entry.caseNumber || entry.id}${entry.title ? ` · ${entry.title}` : ''}`,
+                    reason: result.reason,
+                });
+                continue;
+            }
+            const golden = result.case;
+            fromWorkspace.push({
+                    
                     id: golden.id,
                     cnrNumber: golden.cnrNumber,
                     complainant: golden.complainant,
@@ -107,9 +123,9 @@ const ChargeSheetGatePage: React.FC = () => {
                     recordIndex: -1,
                     loggedAt: golden.filingDate,
                     raw: {},
-                };
             });
-        return [...fromLedger, ...fromWorkspace];
+        }
+        return { cases: [...fromLedger, ...fromWorkspace], gateExclusions: excluded };
     }, [records, allCases]);
 
     const kase = useMemo(() => {
@@ -377,6 +393,16 @@ const ChargeSheetGatePage: React.FC = () => {
             {!loading && !caseId && (
                 <div className="mb-6">
                     <p className="text-xs uppercase text-slate-400 font-bold mb-2">Cases on this device</p>
+                    {gateExclusions.length > 0 && (
+                        <p className="text-sm text-amber-400/90 mb-2" role="status">
+                            {gateExclusions.length} case{gateExclusions.length === 1 ? '' : 's'} listed below
+                            cannot be gated: no incident or filing date is recorded, so this app will not
+                            decide whether the BNS or the IPC applies.{' '}
+                            <span className="text-slate-400">
+                                ({gateExclusions.map((e) => e.label).join(', ')})
+                            </span>
+                        </p>
+                    )}
                     {cases.length === 0 ? (
                         <p className="text-sm text-slate-400">
                             No case has been recorded. File the FIR first — the interlock decides

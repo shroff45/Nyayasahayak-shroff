@@ -64,6 +64,9 @@ And after D28 (PR #9), same command:
 | `src/features/main/` | 32 files tracked, **all 32 live**: the directory left the census |
 | after D29 | 151 files (39196 lines) / 123 reachable / 28 unreachable (3159 lines, 8.1 % of `src/`) — and `reachable` fell to 123, because D29 deleted a *live* screen rather than a dead file |
 | after D33 | 150 files (38,629 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — `reachable` fell by 2: the sandbox was routed, and its only consumer of `CognizanceReview.tsx` was itself |
+| at 4(a)'s base (`91f34ee`, PR #10 merged) | 150 files (38,648 lines) / 121 reachable / 29 unreachable (3,541 lines, 9.2 %) — the +19 lines since D33 are three hedge paragraphs in live JSX, so no file count moved. Re-run both §1 commands before the first edit; §6 was measured on exactly this commit. |
+| after 4(a)-iii | 141 files (37,946 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — the 9-file `src/core/types.ts` closure plus golden `AdjournmentRisk` (8 lines of `src/types.ts`). 693 resolver-lines removed (684 by `wc -l`: the resolver counts +1 per file, so the two totals differ by exactly the file count). `reachable` unmoved at 121, which is the signature §6.3 predicted for a purge that touches nothing live. |
+| after 4(a)-i | 141 files (38,022 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — +76 lines in `src/` and no file count moved: -i changed three files' bodies (`legacyCaseAdapter.ts` +49/-6, `ChargeSheetGatePage.tsx`, `App.tsx`) and two gate files (`statute_tests.mjs` 14→18 tests, `ledger_repro.cjs` claim 32). Entry chunk 624,410 B → 625,108 B (+698 B of refusal copy), 34.89 kB under the D35 ratchet. |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -137,14 +140,26 @@ src/personas/judge/components/DraftJudgmentPanel.tsx
    converts *workspace state*, not a journal record) and 1 orphan (`src/components/JudgeDashboard.tsx`,
    which is one of the 6 above, so it survives into this block). `applicableLawFor` is exported only
    from it (`:22`) and its only non-internal consumer is that same orphan - which is 4(a)'s file to
-   delete, so the export's retirement belongs here and in no purge: D28 removed 15 files and did not
+   delete, so the *call site* retires here and in no purge: D28 removed 15 files and did not
    touch either number - 3 importers before this commit, 3 after. What did move it was nobody's doing:
    the "4 importers, 2 orphans" this rule carried from PR #4 was already false when the purge arrived,
    and this sandbox is a `--depth=1` clone, so not one commit between here and PR #4 can be named as
    the culprit. That is the whole argument for re-measuring instead of quoting:
    `node tools/resolve-importers.mjs --model src/core/workspace/legacyCaseAdapter.ts`.
-   When the orphan dies, the export goes with it in the same commit, not in a follow-up.
 
+   **The one thing this rule used to get wrong, corrected on measurement:** it ended "when the orphan
+   dies, the export goes with it in the same commit", and that is not available. Dropping `export` from
+   `:22` while leaving everything else alone was tried on the base commit: `tsc` fails with 2 errors
+   (TS2459 at `components/JudgeDashboard.tsx:9` — so if the export does go, the caller is deleted
+   *first*, inside the same commit, never one commit earlier), and the statute suite fails 3 of its 14
+   tests with `applicableLawFor is not a function`, `npm test` exit 1 — because
+   `tools/statute_tests.mjs:41` destructures `{ applicableLawFor, toGoldenCase }` out of the bundled
+   adapter to test the commencement boundary directly. That is D32 living inside this plan: `tools/` is a
+   consumer the file graph cannot show, so "its only non-internal consumer is the orphan" is true of
+   `src/` and false of the repository. **Keep the export.** It is the surface the statute test needs, and a
+   function that is exported, called internally, and pinned by name by a suite is not a stray export — it
+   is the module's contract with the one test that checks Art. 20(1). If a future pass wants it internal,
+   the suite changes in the same commit and says which of its three tests moved into `toGoldenCase`.
 4. **Discharged as written: the nationals subtree died in the purge (4(purge)), not here** (PR #7).
    4(a) never migrated `src/features/nationals/core/types.ts` and never reconciled it; the file went
    with its directory, which is what this rule asked for. One number in the original wording was
@@ -186,14 +201,14 @@ src/personas/judge/components/DraftJudgmentPanel.tsx
 Each step is a commit, each commit keeps all four gates green (tsc 0 · `npm test` ·
 `node tools/ledger_repro.cjs` · `npm run build`), and the ancestry check runs before each commit.
 
-- **4(a)-i — make the adapter total, in tests first.** `toGoldenCase` gets the missing-field behaviour
+- **4(a)-i — make the adapter total, in tests first.** *(§6.1 revises what total means: 15 of 15 required fields are already written, so the work is not filling gaps — it is stopping the invention of a date and reading a field the adapter ignores.)* `toGoldenCase` gets the missing-field behaviour
   pinned by node tests: which golden fields it can fill from a legacy object, which it must refuse to
   invent, and what it does with a journal row whose `sectionsInvoked` is a string rather than an array.
   No consumer changes yet. If a field cannot be derived, the adapter says so by type, not by default.
-- **4(a)-ii — move the live namers off `features/main/types.ts`** (the 8) by importing the golden type
+- **4(a)-ii — move the live namers off `features/main/types.ts`** (the 8) *(§6.2 measured: 4 can move today, 3 with renames, and 1 cannot — the intake screen reads five legacy fields the golden shape has no home for.)* by importing the golden type
   and calling the adapter at the boundary. This is the bulk of the block. Keep each page's own props
   typed; only the *shared* shape moves.
-- **4(a)-iii — retire `src/core/types.ts`'s `Case`** (re-measured after D33: 7 importers, 0 live; 3 dead
+- **4(a)-iii — retire `src/core/types.ts`'s `Case`** *(§6.3: run this step first — it is the only one needing no decision.)* (re-measured after D33: 7 importers, 0 live; 3 dead
   namers, 0 live). The plan used to say "delete the three dead files that name it, then the type", which
   is **4 files and is wrong**: `--model` lists four more dead files importing the module without naming
   `Case` (`shared/components/DecisionStream.tsx`, `shared/components/VisualEvidencePanel.tsx`,
@@ -229,3 +244,274 @@ own text); and the census line for unreachable files goes **down**, never up. As
 a convention: claim 31 compares the harness's own `check(` call sites against the number printed on the About page and the numbers in
 `README.md` and this file's sibling document, so a claim deleted mid-flight fails a gate instead of improving one. If 4(a) ends with more
 dead code than it started with, the migration left shims behind — find them before the PR does.
+
+---
+
+## 6. Revision 8 — the walk-through, measured on `91f34ee`
+
+Written after PR #10 merged, on the exact commit 4(a) starts from, by running the two §1 commands plus a
+`--model` call per question and one reproduction against the *bundled* adapter. Nothing in this section is
+carried over from the earlier revisions of this file; where it disagrees with §2-§5, §6 is the measurement
+and §2-§5 are the history.
+
+### 6.0 Two things to know before quoting a number from here
+
+- A fresh clone has no `node_modules`, and `tsc` missing is *reported as* a type error. `npm ci` first. This
+  bit the first block of PR #10; the fix is to look at the exit before believing the diagnosis.
+- `npm test` is `node --test tests/*.test.ts && node tools/statute_tests.mjs`. The line most readers stop at
+  (`# pass 63 / # fail 0`) is the TAP summary of the **first** command; the statute suite prints its own
+  `=== SUMMARY: 14 passed, 0 failed ===` below it. During this walk-through the TAP summary said 63/0 while
+  the suite said **3 failed** — and `npm test` still exited 1, so the gate is honest, but the *first* summary
+  you see is not the verdict. Read the exit code, not the top line.
+
+### 6.1 Question 1 — 4(a)-i, adapter totality: it is already total, and that is the problem
+
+`src/core/workspace/legacyCaseAdapter.ts`, 65 lines, `toGoldenCase` at `:45`, 3 importers (2 live).
+
+| golden field (19) | written from | class |
+|---|---|---|
+| `id` `caseType` `summary` `filingDate` `respondent` | same-named legacy field | derived |
+| `cnrNumber` `complainant` `sectionsInvoked` `caseNotes` `urgency` | `caseNumber` `petitioner` `invokedActs ?? []` `notes ?? ''` `urgencyFor(priority)` | rename, two with a default |
+| `applicableLaw` | `applicableLawFor(incidentDate)` | derived |
+| `incidentDate` | `legacy.filingDate`, else today | **fabricated date** |
+| `status` | `'FILED'` | **literal** |
+| `adjournmentsCount` | `0` | **literal** (see D30) |
+| `isZeroFir` | `false` | **literal** |
+| `nextHearingDate` `lawyerId` `judgeId` `zeroFirTransferStatus` | not written | 4 optional, left undefined |
+
+All **15 required** fields are written and the 4 optional ones are legitimately absent, so "make the adapter
+total" is not the work — the work is that three fields are *invented* and one is invented **dangerously**.
+
+**The fallback to today inverts the fail-safe the suite pins.** `applicableLawFor` fails to `IPC` for
+`undefined` and for an unparseable date (three statute tests in section A assert exactly that, and Art. 20(1)
+is why). But `toGoldenCase` never lets `undefined` reach it: a record with no filing date gets *today*, which
+is after commencement, so the app answers **BNS**. Reproduced against the bundled adapter on this commit:
+
+```
+applicableLawFor(undefined)                  -> IPC        (the fail-safe, working)
+toGoldenCase({…no filingDate…}).incidentDate -> 2026-10-19  (today)
+                                   .applicableLaw -> BNS    (unknown date ⇒ newer, harsher code)
+toGoldenCase({…filingDate 2024-05-01…}).applicableLaw -> IPC  (correct)
+incident 2024-06-28 filed 2024-07-05               -> BNS    (wrong: conduct predates 01-07-2024)
+```
+
+The substitution `incidentDate := filingDate` is *known* debt — `tools/statute_tests.mjs:97-100` says so in a
+comment and defers it to Block 3 (the intake form should capture the incident date). The `|| today` half is
+not mentioned anywhere, is not tested, and moves in the opposite direction to every other guard in this file:
+where a date is missing, silence should mean "the older, more lenient code", and it currently means the
+reverse. That is the one change in 4(a) with a *legal* consequence, and it belongs in -i, before any consumer
+moves onto the shape.
+
+**`lastHearingDate` is required in the legacy shape and never read**, while `status` is invented as `'FILED'`:
+
+```
+toGoldenCase({… lastHearingDate: 2025-01-10 …}).status -> FILED
+```
+
+A case with a recorded hearing is reported as never having had one. `status: legacy.lastHearingDate ? 'HEARING'
+: 'FILED'` fixes it with **no model change** — golden already declares `'HEARING'` — and turns one of the three
+inventions into a derivation.
+
+**Five legacy fields have no golden home at all:** `title`, `lastHearingDate`, `complexityScore`, `pii`,
+`userId`. (Not `caseNumber`/`petitioner`/`invokedActs`/`notes`/`priority` — those are mapped under new names;
+the distinction matters because §6.2 turns on it.) Dropping `pii` and `userId` on the way into a judge-facing
+shape is a design decision, not a detail: the golden shape has no field that says "this record belongs to the
+citizen who filed it", and `JudgeBoard`'s Blind Mode hides PII that the golden path never carries.
+
+**The decision -i needs, and the recommendation.** How should `toGoldenCase` behave when a field cannot be
+derived?
+
+| | option | consequence |
+|---|---|---|
+| **A** | **refuse**: return a result object — `{ ok: true, case }` or `{ ok: false, missing, reason }` — and the two call sites (`App.tsx:257`, `ChargeSheetGatePage.tsx:93`) show "cannot be presented as a case: no incident date recorded" | golden `Case` untouched, so rule 1 holds; the failure is visible where it happens; costs two call sites and a new UI state |
+| B | widen golden: make `incidentDate` nullable | every live reader inherits a null-check; rule 1 forbids editing the shape in this block; pushes the burden from the writer to every reader |
+| C | keep the today-fallback, document it | the fail-safe stays inverted and the next person reads the comment as permission |
+
+Recommend **A**, limited to what cannot be derived (`incidentDate` when there is no filing date), with
+`status` moved from invention to derivation and `adjournmentsCount: 0` / `isZeroFir: false` *kept as literals
+but pinned by a test that says they are defaults, not measurements* (they are the D30 story: the store has no
+adjournment kind, so 0 is "nothing recorded", and the moment a judge screen calls it a count, the label lies).
+
+Tests -i writes first, in `tools/statute_tests.mjs` section B (where the adapter's contract already lives):
+`a record with no filing date does not get the newer code`, `a missing date refuses instead of defaulting`,
+`a case with a last hearing is not reported as never having sat`, `the two literals are defaults and say so`.
+Each one FAILs before the change and PASSs after; that is the whole of -i.
+
+### 6.2 Question 2 — the six dead namers, and why 4(a)-ii is really two steps
+
+The 6 live+dead namers of golden `Case` (`--model src/types.ts --symbol Case`): 3 live —
+`components/DraftJudgmentPanel.tsx`, `core/workspace/legacyCaseAdapter.ts`, `services/akhandLedger.ts` —
+and 3 dead — `components/{CaseDetailsPanel,CaseQueue,JudgeDashboard}.tsx`.
+
+The dead three close to **5 files / 649 lines** (`src/services/vidhikRAG.ts` 182 and
+`src/components/GraphVisualizationPanel.tsx` 83 have no importer outside that set), 0 importers from outside,
+0 live members — pure subtraction, and it is what the plan's -ii calls "the dead half". `vidhikRAG` is the
+RAG service, `GraphVisualizationPanel` the graph view: neither is *needed* by 4(a), both are currently kept
+alive only by files 4(a) deletes, so they go with them rather than becoming a new island (D33's
+`CognizanceReview` is the counter-example: a stranded file worth keeping is *kept and registered*; a stranded
+service nobody can mount is deleted with its last caller — the difference is stated in the commit).
+
+For the live half, the measured question is not who *imports* `features/main/types.ts` but who reads a field
+that golden does not have:
+
+| live namer of the legacy `Case` | legacy-only fields it touches | can move to golden? |
+|---|---|---|
+| `core/context/WorkspaceContext.tsx` | none (only `id`) | **yes** |
+| `features/main/components/CaseRelationshipMapper.tsx` | none | **yes** (renames only) |
+| `features/main/services/geminiService.ts` | none | **yes** (renames only) |
+| `core/workspace/legacyCaseAdapter.ts` | `title` (doc only) | it is the bridge — it *must* name both |
+| `features/main/components/JusticeTimeline.tsx` | `title` ×4, `lastHearingDate` ×3 | no — needs 2 golden-absent fields |
+| `features/main/services/piiService.ts` | `title` ×3, `pii` ×2 | no — PII has no golden home |
+| `features/main/constants/mockData.ts` | `title` ×16, `lastHearingDate` ×16, `complexityScore` ×16, `pii` ×9 | no — it *produces* legacy instances |
+| `features/main/components/CaseIntakeTriage.tsx` | all five (`title` ×18, `complexityScore` ×5, `lastHearingDate` ×4, `pii` ×2, `userId` ×1) | no — it is the intake form |
+
+So 4(a)-ii splits, and the split is the finding: **-ii-a** moves the four files whose needs golden satisfies,
+which is ordinary migration work; **-ii-b** is blocked behind the field decision in §6.1/§6.5 — either the
+golden shape absorbs `title`/`complexityScore`/`pii`/`userId` (rule 1 forbids in this block, so it is a
+*ruling*, not a step) or the intake screens keep the legacy type permanently and the adapter stays the only
+place the two meet. **Do not "complete" -ii by inventing values for `complexityScore` in a golden-typed mock**:
+that is D29's failure mode wearing a type system.
+
+That changes what §5 means by done. Its current test — `--model` reports 0 live namers for
+`features/main/types.ts` — is unreachable without the field decision, and forcing it would mean fabricating
+fields to satisfy a compiler. The honest version: after 4(a), `core/types.ts` has **0 namers anywhere** (it is
+gone), golden `Case` has **0 dead namers** (the 5-file set is deleted), and every *judge-facing* consumer reads
+golden. `features/main/types.ts` may keep 4 live namers, and §5 must say so out loud rather than leaving a
+done-criterion that can only be met by lying.
+
+### 6.3 Question 3 — 4(a)-iii, confirmed, and it goes first
+
+Re-run on this commit with the D28 closure rule: seeds = `src/core/types.ts` + its 7 importers; fixpoint adds
+`src/core/layout/DashboardLayout.tsx` (its own importers: 0 — the layout that renders `<DecisionStream />` at
+`:110` is itself unreachable, which is how the plan's "three dead files" grew to nine).
+
+```
+9 files, 693 lines, live members 0, importers from outside the set: none, newly orphaned: 0
+```
+
+Predicted census: **141 / 121 / 20** — `reachable` unmoved at 121, the correct signature of a purge that
+touches nothing live (contrast D29 and D33, where `reachable` *had* to fall). Directories left with no files
+of their own: `src/core/layout/`, `src/modules/judge/`, `src/modules/judge/features/`, `src/shared/services/`.
+`src/core/` keeps its subdirectories; only `src/core/types.ts` sat directly in it, which is worth saying
+because a `find`-based check would report `src/core` as emptied and be wrong.
+
+Three things ride with it, all measured:
+- **golden `AdjournmentRisk` is deleted in the same commit.** After -iii the only definition is
+  `src/types.ts:38`, named by nobody; `App.tsx:303` mentions the *panel's* name inside the comment explaining
+  the deletion, and that comment stays. The reason is a defect, not a tidy-up, exactly as rule 1 requires:
+  the type is the schema of the invented assessment D29 removed, and four of its fields
+  (`riskLevel`, `historicalRate`, `casesHandled`, `predictedDelayMonths`) are *literally* claim 30's
+  `SCORE_KEY` list. Leaving it in the live model hands the next contributor a fabrication schema with a name
+  that sounds like a feature.
+- **`applicableLawFor`'s export stays** — §3 rule 3, corrected on measurement above.
+- **not in 4(a)**: `src/personas/police/pages/StationDashboard.tsx` and `src/types/pilot.ts` (98 lines, its one
+  importer) carry a *third* `UserRole` and are a closed 2-file island. Pure subtraction, but on the purge
+  track; listed here so a `grep UserRole` during this block does not mistake it for stragglers of -iii.
+
+### 6.4 Question 4 — how the golden `Case` is consumed, and what changes when the dead shapes go
+
+`--model src/types.ts` today: 9 importers, 4 live. The four, and what they actually read:
+
+| live importer | reads | after 4(a) |
+|---|---|---|
+| `components/DraftJudgmentPanel.tsx` | `cnrNumber` `complainant` `respondent` `summary` `filingDate` `sectionsInvoked` | unchanged; it is *the* judge panel the shape exists for |
+| `core/workspace/legacyCaseAdapter.ts` | mints it | the only writer in the app, by design |
+| `services/akhandLedger.ts` | `status` (1 mention) + `data: any` on `LedgerEntry` | `LedgerEntry.data` is `any` at `src/types.ts:55` — the one hole that lets a journal row be *called* a Case without being one; worth closing in -iv, because it is why `toGoldenCase(entry)` at `ChargeSheetGatePage:93` typechecks against data the store never validated |
+| `personas/judge/pages/HashVerifier.tsx` | **nothing of `Case`** — it imports `LedgerEntry` from `src/types.ts` and mentions `Case` 0 times (`grep -cE '\bCase\b'` = 0) | nothing to migrate, and nothing to delete: the `LedgerEntry` import is load-bearing for its own feature |
+
+That correction is worth keeping in this plan, because it is §3's own warning committed against §6:
+`--model src/types.ts` reports **9 module-importers, 4 live**, while the census §2's table carries —
+`--model src/types.ts --symbol Case` — is **6 namers, 3 live, 3 unreachable**, and the second is the number
+to plan against. The gap is not noise: `HashVerifier.tsx` imports `LedgerEntry` from the same module and names
+`Case` 0 times, `GraphVisualizationPanel.tsx` is a dead importer that names it 0 times, and
+`vidhikRAG.ts`'s single occurrence is the comment `// Case Node` at `:80` — which is precisely why the resolver
+strips strings and JSX text before testing a symbol, and why a bare `grep` still over-reports it by one file.
+Planning -ii from the module count would have scheduled migration work in files that have none. By `grep -c`
+over `Case\b` the three live namers hold 10 mentions (2 + 4 + 4) and the three unreachable ones 12 (3 + 2 + 7)
+— a reminder that both numbers are candidates, and the resolver's 3-and-3 is the authority.
+
+Where the two worlds meet is one screen, and -iv should be written around it: `ChargeSheetGatePage:87` builds
+`const cases = useMemo<LedgerCase[]>(…)` from `listCases(records)` **union** workspace cases through
+`toGoldenCase`, i.e. journal-first with intake filling the gaps. The per-page coercions -iv consolidates
+(`complainant ?? petitioner`, `cnrNumber ?? caseNumber`, `sectionsInvoked ?? invokedActs`) are the same
+renames the adapter already performs, which is the argument for moving them into it. Two cautions the
+measurement adds: `readCase`'s `filingDate` fallback differs from the adapter's and must not be merged (§4-iv
+already says so), and `complainant ← petitioner` is **semantic, not lexical** — a petitioner in a revision is not
+the complainant, and a judge reading "Complainant" gets whoever filed the petition. -iv can put the mapping in
+one file with one test; it cannot make the mapping true. If the UI label should read *Petitioner or
+complainant*, that is a copy change for this commit, since it is the same class as claim 30's hedges.
+
+### 6.5 Question 5 — where the derivation lives, and the truthfulness decisions left open
+
+Post-unification, `applicableLawFor` stays exactly where it is: `legacyCaseAdapter.ts:22`, exported, with
+`BNS_EFFECTIVE_DATE` imported from `core/services/forensicInterlock.ts:15` — **one commencement constant for
+both the judge panels and the s.176(3) interlock**, which is worth defending deliberately: the day someone
+"tidies" the constant into a local copy is the day the two can disagree about which criminal code applies,
+and §A of the statute suite pins the number itself (`2024-07-01`) so the copy could not stay invisible for
+long.
+
+Open truthfulness items 4(a) must not quietly absorb, each with its own home:
+1. `incidentDate := filingDate` (the proxy) → **Block 3** (collect it at intake). -i makes the *missing* case
+   refuse; it cannot make a late filing look like a late incident. The plan should say "-i makes the unknown
+   unknown" and no more, or the next reader will think Art. 20(1) is solved.
+2. `adjournmentsCount: 0` → **D30's feature PR** (an `ADJOURNMENT` ledger kind + writer + its own claim). -i
+   pins it as a default in a test so that a future UI cannot present it as a count.
+3. `pii` / `userId` dropped at the boundary → belongs with the -ii-b field decision, not with a type move.
+4. Day-count ceilings on live screens: the correct rule for s.187(3) is 60/90 **depending on the rank of the
+   officer in charge**, and s.193's tiers are 90/180 — so any 4(a) work that renders a ceiling *from real
+   data* must take the tier from the record, not from a constant. `JudgeBoard`'s fixture `maxDays: 60` is
+   sample data and claim 30's hedge already says so; touching that copy is not 4(a)'s job.
+
+### 6.6 Execution order, with the proof each commit owes
+
+| # | commit | contents | predicted census after | proof that must be in the message |
+|---|---|---|---|---|
+| 1 | **4(a)-iii** | delete the 9-file closure + golden `AdjournmentRisk` | 141 / 121 / 20 | `--check` before and after; BFS replay with the set removed (0 live lost, 0 orphaned); `--model src/core/types.ts` = 0 importers; `npm test` 14/14 statute tests **unchanged**, proving the export survived |
+| 2 | **4(a)-i — DONE (`§6.7`)** | 4 new statute tests, then refusal-for-unknown + `status` derivation | 141 / 121 / 20 (lines move) | FAIL-before / PASS-after per test, pasted; both call sites compile with the union return |
+| 3 | **4(a)-ii-a** | `WorkspaceContext`, `CaseRelationshipMapper`, `geminiService` onto golden via the adapter | unchanged | `--model src/features/main/types.ts`: live namers 8 → 5 (adapter + the three blocked); tsc 0 |
+| 4 | **4(a)-iv** | coercions into the adapter, one test; `LedgerEntry.data` typed; label question answered | unchanged | `readCase`'s different fallback documented in the diff; the `LedgerCase` union still the only join point |
+| — | **needs your ruling** | -ii-b (the five orphan fields) and the §5 done-criterion rewrite | — | not a commit until decided |
+
+Two rules from §3 apply to all four: a type edit and the death of its dead namers are one commit (rule 2), and
+re-measure rather than quote — including this section, which was true when it was written and will be checked
+again at every step.
+
+### 6.7 4(a)-i, executed — what landed, and one gate that had to be rebuilt before it was trusted
+
+`toGoldenCase` now returns `{ ok: true; case: Case } | { ok: false; missing: 'incidentDate'; reason: string }`.
+No `|| today` survives anywhere in `src/`; the status literal became
+`legacy.lastHearingDate ? 'HEARING' : 'FILED'`; `adjournmentsCount: 0` and `isZeroFir: false` stayed literals and
+are now pinned by a test that passes them an input claiming `adjournmentsCount: 7` and asserts the answer is still
+0, i.e. that the field is a default and never a measurement. `applicableLawFor`'s export was left alone, per the
+correction in §3 rule 3. The `statute_tests.mjs` concession comment about the filing-date proxy was **extended, not
+deleted** — -i made the *missing* date refuse, the substitution itself is Block 3's, and the comment is the only
+place that debt is recorded.
+
+Proofs, both directions, in the commit that shipped them:
+- **FAIL before** (tests written first, against the unchanged adapter): `=== SUMMARY: 14 passed, 4 failed ===` —
+  refusal, result-shape, `HEARING`, and the pin (whose before-failure is only the missing `.case`, disclosed in the
+  test's own comment rather than smoothed over).
+- **PASS after**: `18 passed, 0 failed`, `tsc` 0 across the whole project, `npm test` exit 0 with `# pass 63` above
+  it, harness `32/32`, `--check` ok, build 0, entry chunk +698 B inside the D35 byte budget.
+- **The blast radius was the type system's, not my grep's**: `tsc` reported exactly four errors at exactly two call
+  sites, which is the evidence that no third consumer exists.
+
+**Claim 32 needed two attempts, and the first one is the lesson.** Written as "the file that calls `toGoldenCase`
+tests `.ok` somewhere", it *passed* against a deliberately broken caller — `App.tsx` still mentions `.ok` in an
+unrelated JSX branch, so a file-wide regex was satisfied while the real consumer cast the result straight to a
+`Case`. The rule is now per **binding**: every variable assigned from `toGoldenCase` must be guarded within the
+statement that follows it, no field may be read off an untested result, and `as any` / `as unknown as` /
+`@ts-ignore` in a caller count as the refusal being discarded. Two plants redden it (`as any` escape, and simply
+dropping the guard); the restored tree is green. The floor — fewer than two live caller files is a *failure*, not
+a pass — is the same defence against a rule that outlives its subjects that claim 31 added for the count.
+
+**One deviation from the ruling, disclosed.** The instruction was to *disable rather than hide* the undatable
+cases in `ChargeSheetGatePage`. A greyed row needs a field on the page's `LedgerCase` view type, which is a
+view-model change belonging to -iv; what shipped is the auditable half of the ruling — the excluded cases are
+**counted aloud by name** under the list ("N cases listed below cannot be gated: no incident or filing date is
+recorded… (ids)"), so the s.176(3) denominator never shrinks silently, and the memo returns `{ cases, gateExclusions }`
+from one computation so the pair cannot drift apart. -iv should upgrade this to per-row disabled rendering.
+
+Also fixed while here: the pin test read the adapter with a cwd-relative path, which passes under `npm test` and
+fails when the file is run from anywhere else — now resolved against `repoRoot`, verified by running the suite from
+`/tmp` (18/18).

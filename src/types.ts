@@ -35,15 +35,6 @@ export interface VisualCard {
     audioText: string;
 }
 
-export interface AdjournmentRisk {
-    lawyerId: string;
-    lawyerName: string;
-    riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
-    historicalRate: number;
-    casesHandled: number;
-    predictedDelayMonths: number;
-}
-
 /**
  * One journal entry as a screen renders it. Called `BlockchainBlock` until 4(e): the name was the
  * last thing in the type layer that implied a chain of blocks agreed on by several machines, when
