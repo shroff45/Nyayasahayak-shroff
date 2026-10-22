@@ -13,10 +13,13 @@ import React, {
     useContext,
     useEffect,
     useMemo,
+    useRef,
     useState,
 } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import type { Case, HistoryItem } from '../../features/main/types';
+import type { Case } from '../../types';
+import type { HistoryItem } from '../../features/main/types';
+import { migrateWorkspaceStorage } from '../workspace/legacyCaseAdapter';
 
 /** Cap on the persisted activity log so localStorage cannot grow without bound. */
 const MAX_HISTORY_ITEMS = 200;
@@ -55,20 +58,30 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const [allCases, setAllCases] = useState<Case[]>([]);
     const [selectedCase, setSelectedCase] = useState<Case | null>(null);
     const [history, setHistory] = useState<HistoryItem[]>([]);
+    // Do not let the persistence effects write the initial empty state over a user's records before
+    // the rehydration effect gets its turn. This mattered before migration too; it matters more now
+    // because an empty overwrite would look like a successful schema upgrade that erased a docket.
+    const hydratedOwner = useRef<string | null>(null);
 
-    // Rehydrate for the signed-in user; never mix two users' dockets.
+    // Rehydrate for the signed-in user; never mix two users' dockets. The migration scans every
+    // `nyaya:cases:<owner>` key before setting its one global version marker, so a second cached
+    // account cannot be skipped after the first account has been upgraded.
     useEffect(() => {
+        migrateWorkspaceStorage(localStorage);
         const keys = storageKeys(owner);
         setAllCases(readJson<Case[]>(keys.cases, []));
         setHistory(readJson<HistoryItem[]>(keys.history, []));
         setSelectedCase(null);
+        hydratedOwner.current = owner;
     }, [owner]);
 
     useEffect(() => {
+        if (hydratedOwner.current !== owner) return;
         localStorage.setItem(storageKeys(owner).cases, JSON.stringify(allCases));
     }, [allCases, owner]);
 
     useEffect(() => {
+        if (hydratedOwner.current !== owner) return;
         localStorage.setItem(storageKeys(owner).history, JSON.stringify(history));
     }, [history, owner]);
 

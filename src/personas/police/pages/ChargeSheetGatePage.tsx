@@ -25,7 +25,6 @@ import {
     exhibitsForCase, isForensicSceneVideo, latestExpertVisit, latestOverrideRequest,
     listCases, sectionNumbers, type LedgerExhibit, type LedgerCase,
 } from '../../../shared/utils/ledgerRecords';
-import { toGoldenCase } from '../../../core/workspace/legacyCaseAdapter';
 import { useToast } from '../../../shared/hooks/useToast';
 import { useWorkspace } from '../../../core/context/WorkspaceContext';
 import type { LedgerRecord } from '../../../core/trust/ledger.ts';
@@ -94,9 +93,8 @@ const ChargeSheetGatePage: React.FC = () => {
 
     useEffect(() => { void load(); }, [load]);
 
-    // Cases in the journal first; the intake workspace fills the gaps. Historical journal payloads
-    // are projected by `readCase` (not rewritten — their signed bytes are evidence); the mutable
-    // workspace is still legacy at this point in the sequence, so it crosses the one adapter here.
+    // Cases in the journal first; the workspace fills gaps using the same golden fields. Historical
+    // journal payloads are projected by `readCase`, never rewritten: their signed bytes are evidence.
     // Both paths end in the same union view model. An undated record is a disabled row, rather than
     // being dropped from the denominator or made into a Link that lets the user try the gate anyway.
     const { caseRows, gateExclusions } = useMemo(() => {
@@ -116,54 +114,26 @@ const ChargeSheetGatePage: React.FC = () => {
 
         const fromLedger = listCases(records);
         const seen = new Set(fromLedger.map((entry) => entry.id));
-        const fromWorkspace: GateCaseRow[] = [];
-        for (const entry of allCases) {
-            if (seen.has(entry.id)) continue;
-            const result = toGoldenCase(entry);
-            if (!result.ok) {
-                const caseData: LedgerCase = {
-                    id: entry.id,
-                    cnrNumber: entry.caseNumber,
-                    complainant: entry.petitioner,
-                    respondent: entry.respondent,
-                    caseType: entry.caseType,
-                    summary: entry.summary,
-                    filingDate: entry.filingDate,
-                    sectionsInvoked: entry.invokedActs ?? [],
-                    recordIndex: -1,
-                    loggedAt: entry.filingDate,
-                    raw: {},
-                };
-                fromWorkspace.push({
-                    kind: 'excluded',
-                    caseData,
-                    exclusion: exclusionFor(caseData, result.reason),
-                });
-                continue;
-            }
-            const golden = result.case;
-            fromWorkspace.push({
-                kind: 'gatable',
-                caseData: {
-                    id: golden.id,
-                    cnrNumber: golden.cnrNumber,
-                    complainant: golden.complainant,
-                    respondent: golden.respondent,
-                    caseType: golden.caseType,
-                    summary: golden.summary,
-                    filingDate: golden.filingDate,
-                    incidentDate: golden.incidentDate,
-                    sectionsInvoked: golden.sectionsInvoked,
-                    applicableLaw: golden.applicableLaw,
-                    isZeroFir: golden.isZeroFir,
-                    status: golden.status,
-                    recordIndex: -1,
-                    loggedAt: golden.filingDate,
-                    raw: {},
-                },
-            });
-        }
-        const rows = [...fromLedger.map(rowForLedgerCase), ...fromWorkspace];
+        const fromWorkspace = allCases
+            .filter((entry) => !seen.has(entry.id))
+            .map((entry): LedgerCase => ({
+                id: entry.id,
+                cnrNumber: entry.cnrNumber,
+                complainant: entry.complainant,
+                respondent: entry.respondent,
+                caseType: entry.caseType,
+                summary: entry.summary,
+                filingDate: entry.filingDate,
+                incidentDate: entry.incidentDate,
+                sectionsInvoked: entry.sectionsInvoked,
+                applicableLaw: entry.applicableLaw,
+                isZeroFir: entry.isZeroFir,
+                status: entry.status,
+                recordIndex: -1,
+                loggedAt: entry.filingDate,
+                raw: {},
+            }));
+        const rows = [...fromLedger.map(rowForLedgerCase), ...fromWorkspace.map(rowForLedgerCase)];
         return {
             caseRows: rows,
             gateExclusions: rows.flatMap((row) => row.kind === 'excluded' ? [row.exclusion] : []),

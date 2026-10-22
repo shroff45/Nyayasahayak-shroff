@@ -70,6 +70,7 @@ And after D28 (PR #9), same command:
 | after 4(a)-ii-b + D39 | 141 files (37,731 lines) / 121 reachable / 20 unreachable — −291 lines. `src/features/main/types.ts`: module importers 12 → 11, `Case` namers 8 → 7 (mockData no longer names the legacy model at all). Total JS 2,497,924 → 2,497,361 B (−563 B) across 92 chunks: the fixture block had been tree-shaken out of the bundle long ago, so this commit's win is in the source model, not the payload. |
 | after 4(a)-ii-a (achievable half) | 141 files (37,774 lines) / 121 reachable / 20 unreachable — `CaseRelationshipMapper` is golden and `geminiService` receives golden data through a refusal-handling boundary. Module importers 11 → 10; the resolver's cross-module *file* census says `Case` namers 7 → **6**, not the predicted 5: `geminiService` names golden `Case` but still imports three non-case types from the legacy module, so the module remains live. |
 | after 4(a)-iv(a) | 141 files (37,857 lines) / 121 reachable / 20 unreachable — a `GateCaseRow` union makes every undated charge-sheet case an explicit disabled row; `LedgerEntry.data` is `unknown`, so a journal payload must be narrowed before a screen reads it. No persistence key changed in this commit. |
+| after 4(a)-iv(b) | 141 files (38,006 lines) / 121 reachable / 20 unreachable — the mutable workspace is golden-v1; live legacy-module importers 10 → 8 and the cross-module `Case` namer census 6 → 4. The four are not four legacy-shape readers: `WorkspaceContext`, `CaseIntakeTriage`, and `geminiService` still import non-case types from the legacy module while naming golden `Case`; only `legacyCaseAdapter` actually describes historical fields. -iv(c) relocates those types, then deletes the module. |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -615,3 +616,43 @@ entries stay in their original shape and `readCase` projects both old and golden
 mutable `nyaya:cases:<owner>` workspace will migrate in -iv(b), with a `golden-v1` version marker;
 new workspace writes will be golden. Appending synthetic replacement records would be a device-signed
 assertion about past data, not a migration, and direct rewriting would correctly fail verification.
+
+
+### 6.12 4(a)-iv(b), executed — mutable cache migration, immutable journal
+
+`WorkspaceContext.allCases` and `selectedCase` now hold golden `Case[]` / `Case | null`. On app
+initialisation, `migrateWorkspaceStorage` scans **every** `nyaya:cases:<owner>` key, maps each valid
+record to the golden keys (`caseNumber` → `cnrNumber`, `petitioner` → `complainant`, `invokedActs` →
+`sectionsInvoked`, `notes` → `caseNotes`), derives status/urgency/law, and removes the legacy
+`title`, `pii`, and `userId` fields. Only after all keys write successfully does it store the global
+`nyaya:cases:schema = golden-v1` marker. That ordering matters: migrating only the current owner
+then setting one global marker would strand the second cached user's legacy records forever.
+
+No journal key is migrated. `readCase` continues to project historical `CASE` records at read time,
+with an explicit comment explaining that the leaf digest/link/anchor bind the old payload bytes. The
+statute suite feeds two workspace owners plus `nyaya:ledger:v1:records` into the migration and pins
+both facts: the two workspace keys become golden and the journal string is byte-identical.
+
+A filing date remains the documented incident-date proxy until Block 3. If a historical workspace
+case has neither date, migration preserves the absence as `incidentDate: ''`; `toPresentableGoldenCase`
+returns the same Art. 20(1) refusal before Draft Judgment or Gemini sees it, and the charge-sheet
+row stays disabled. The migration does **not** silently call that an IPC case. This is a structural
+golden record with a runtime presence check, not an invented date.
+
+The intake form now constructs only the golden fields. Its `title`/`pii` draft fields are local and
+never persisted to a case, activity log, or ledger; `caseNotes` is the persisted notes field. A CNR
+must be entered rather than being formatted with `Math.random()`, closing D36's identifier half;
+`userId` is neither migrated nor written, closing D37. `JusticeTimeline`, `piiService`, the custody
+page, Draft Judgment and the gate moved to golden values as well. `lastHearingDate` was deliberately
+not renamed to `nextHearingDate`: a last hearing is not a next hearing. It still informs legacy
+status during migration, but is not stored as a false future appointment.
+
+The resolver reports legacy-module importers **10 → 8** and cross-module `Case` namers **6 → 4**.
+That is not the final module death: the three remaining non-case types (plus `HistoryItem`/`User`)
+keep files importing the module even where their `Case` is golden. -iv(c) relocates them and deletes
+`features/main/types.ts`; the only real historical-shape owner after this commit is the migration
+adapter.
+
+D41 is also closed here as harness claim 34. It executes the statutory suite and compares its own
+printed pass count with the counts in both command examples; a docs-only `22 → 21` plant and an
+extra-passing-test plant both fail claim 34, then the restored tree returns 34/34.

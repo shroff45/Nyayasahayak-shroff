@@ -1284,17 +1284,20 @@ const main = async () => {
         + `fails here, which is the case that had no gate until D34.`
     );
 
-    // --------------------------------------------------------------------------- 4(a)-i / claim 32
+    // --------------------------------------------------------------------------- 4(a)-i / claim 32 (extended by 4(a)-iv(b))
     //
-    // The adapter now answers with a result rather than a Case, because a record with no date must not
-    // pick a criminal code for itself (Art. 20(1); see legacyCaseAdapter.ts). A refusal nobody handles is
-    // the same defect with an extra step, so the rule is mechanical: every *live* caller must look at the
-    // discriminant, and none may read a field off an untested result. The floor is the part that matters -
+    // A case-presentation adapter answers with a result rather than a Case, because a record with no date
+    // must not pick a criminal code for itself (Art. 20(1); see legacyCaseAdapter.ts). `toGoldenCase` served
+    // the old intake shape; after the golden-v1 workspace migration, `toPresentableGoldenCase` serves the
+    // same refusal for the structurally-golden empty-date case. A refusal nobody handles is the same defect
+    // with an extra step, so every *live* caller must look at the discriminant, and none may read a field off
+    // an untested result. The floor is the part that matters -
     // a rule over an empty set passes by construction, which is how several of this file's earlier checks
     // would have behaved against a deleted directory. Here the floor is a measured count of callers, so a
     // third caller that ignores the refusal cannot be added quietly, and neither can the callers vanish.
+    const presentationAdapter = /\b(?:toGoldenCase|toPresentableGoldenCase)\s*\(/;
     const ADAPTED = srcFiles.filter((f) =>
-        reachable.has(f) && !f.endsWith('legacyCaseAdapter.ts') && /\btoGoldenCase\s*\(/.test(codeOnly(f)));
+        reachable.has(f) && !f.endsWith('legacyCaseAdapter.ts') && presentationAdapter.test(codeOnly(f)));
     const unhandled = [];
     for (const file of ADAPTED) {
         const code = codeOnly(file);                       // comments stripped: a note cannot satisfy this
@@ -1304,8 +1307,8 @@ const main = async () => {
         // A file-wide `\.ok` test is not enough: it can sit in unrelated JSX while the real consumer
         // casts the result straight to a Case. So the rule is per binding - every variable assigned from
         // toGoldenCase must be guarded within the statement that follows it.
-        const bindings = [...code.matchAll(/(?:const|let)\s+(\w+)\s*=\s*[^;\n]*?toGoldenCase\s*\([^)]*\)[^;]*;/g)];
-        if (!bindings.length) unhandled.push(`${file} (calls toGoldenCase without binding its result)`);
+        const bindings = [...code.matchAll(/(?:const|let)\s+(\w+)\s*=\s*[^;\n]*?(?:toGoldenCase|toPresentableGoldenCase)\s*\([^)]*\)[^;]*;/g)];
+        if (!bindings.length) unhandled.push(`${file} (calls a presentation adapter without binding its result)`);
         for (const m of bindings) {
             const name = m[1];
             const after = code.slice(m.index, m.index + 600);
@@ -1316,7 +1319,7 @@ const main = async () => {
         }
     }
     check(
-        'Every live caller of toGoldenCase guards the refusal at the binding',
+        'Every live caller of a case-presentation adapter guards the refusal at the binding',
         ADAPTED.length >= 2 && unhandled.length === 0,
         ADAPTED.length < 2
             ? `only ${ADAPTED.length} live caller file(s) found (${ADAPTED.join(', ') || 'none'}) - a rule over fewer than two callers is not a rule, so this fails rather than passing vacuously`
@@ -1324,8 +1327,8 @@ const main = async () => {
                 + (unhandled.length ? `unhandled refusal: ${unhandled.join(' | ')}`
                     : 'every binding from toGoldenCase is tested for `ok` within the statement that follows it, no field is read off an untested result, '
                       + 'and no caller casts its way past the union. The refusal is also rendered, not swallowed: App.tsx replaces the '
-                      + 'draft-judgment panel with the reason, and ChargeSheetGatePage counts the excluded cases aloud so the s.176(3) '
-                      + 'denominator stays auditable.')
+                      + 'draft-judgment panel with the reason, and ChargeSheetGatePage renders the excluded cases as disabled rows while '
+                      + 'also counting them aloud, so the s.176(3) denominator stays auditable.')
     );
 
     // --------------------------------------------------------------------------- 4(a)-ii-a / claim 33
@@ -1343,7 +1346,7 @@ const main = async () => {
     const callers = srcFiles.filter((f) => reachable.has(f) && f !== GS && /\bpredictCaseOutcome\s*\(/.test(codeOnly(f)));
     const unguarded = callers.filter((f) => {
         const code = codeOnly(f);
-        return !/toGoldenCase\s*\(/.test(code) || !/\.ok\b/.test(code);
+        return !/\b(?:toGoldenCase|toPresentableGoldenCase)\s*\(/.test(code) || !/\.ok\b/.test(code);
     });
     check(
         'The AI triage call is shown the golden shape by a caller that handles the refusal',
@@ -1352,7 +1355,53 @@ const main = async () => {
             + `${callers.length} live caller file(s) of predictCaseOutcome (${callers.join(', ') || 'none'}) - a count of zero `
             + `would make this vacuous, so it fails. `
             + (unguarded.length ? `callers without adapter+refusal handling: ${unguarded.join(', ')}`
-                : 'every caller adapts via toGoldenCase and tests `ok`, so an undated case is never sent for prediction.')
+                : 'every caller passes through the date-presence adapter and tests `ok`, so an undated case is never sent for prediction.')
+    );
+
+    // --------------------------------------------------------------------------- D41 / claim 34
+    //
+    // A test count is a claim about what `npm test` covers, not decoration beside a command. The
+    // statutory suite prints its own pass total, so read that result rather than counting `test(`
+    // calls (a helper, comment or skipped test would make a source count lie). Both documents must
+    // say the same number and the suite itself must be green; a future test added without its prose
+    // update, or a test deleted while prose remains, therefore fails this harness.
+    let statutePass = null;
+    let statuteFail = null;
+    let statuteRunError = null;
+    try {
+        const statuteOutput = execFileSync(process.execPath, ['tools/statute_tests.mjs'], {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        const summary = statuteOutput.match(/=== SUMMARY: (\d+) passed, (\d+) failed ===/);
+        if (summary) {
+            statutePass = Number(summary[1]);
+            statuteFail = Number(summary[2]);
+        } else {
+            statuteRunError = 'the statutory suite did not print its SUMMARY line';
+        }
+    } catch (error) {
+        statuteRunError = error instanceof Error ? error.message.split('\n')[0] : String(error);
+    }
+    const statedStatutes = (file) => {
+        // Both documents keep their command examples in Markdown code comments; remove that
+        // continuation marker before matching so a wrapped `statutory` / `tests` phrase is still
+        // one stated count, not a false null.
+        const stated = fs.readFileSync(path.join(repoRoot, file), 'utf8').replace(/^\s*#\s?/gm, ' ');
+        const match = stated.match(/\+\s+(\d+) statutory\s+tests/);
+        return match ? Number(match[1]) : null;
+    };
+    const readmeStatutes = statedStatutes('README.md');
+    const trustStatutes = statedStatutes('docs/TRUST_MODEL.md');
+    check(
+        'The statutory-test count the docs state is the count the suite actually runs',
+        statuteRunError === null && statuteFail === 0 && statutePass !== null
+            && readmeStatutes === statutePass && trustStatutes === statutePass,
+        statuteRunError
+            ? `could not run tools/statute_tests.mjs: ${statuteRunError}`
+            : `the suite printed ${statutePass} passed / ${statuteFail} failed; README says ${readmeStatutes}; `
+                + `docs/TRUST_MODEL.md says ${trustStatutes}. All three must agree.`
     );
 
     console.log(`\n=== SUMMARY: ${pass} claim(s) hold, ${fail} do not (of ${pass + fail}) ===\n`);

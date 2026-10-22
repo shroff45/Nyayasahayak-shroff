@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef } from 'react';
-import { Case } from '../types';
+import type { Case } from '../../../types';
 import { gsap } from 'gsap';
 import AnimatedPageWrapper from './common/AnimatedPageWrapper';
 import { getLocalizedNumber } from '../lib/utils';
@@ -56,7 +56,7 @@ const JusticeTimeline: React.FC<JusticeTimelineProps> = ({ t, selectedCase, lang
         }
 
         const filingDate = new Date(selectedCase.filingDate);
-        const lastHearingDate = new Date(selectedCase.lastHearingDate);
+        const nextHearingDate = selectedCase.nextHearingDate ? new Date(selectedCase.nextHearingDate) : null;
         const today = new Date();
         const duration = Math.round((today.getTime() - filingDate.getTime()) / (1000 * 60 * 60 * 24));
         
@@ -68,7 +68,7 @@ const JusticeTimeline: React.FC<JusticeTimelineProps> = ({ t, selectedCase, lang
 
         const timelineEvents = [
             { date: filingDate, title: t('filing_date_title'), icon: 'fa-file-alt' },
-            { date: lastHearingDate, title: t('last_hearing_date_title'), icon: 'fa-gavel' },
+            ...(nextHearingDate ? [{ date: nextHearingDate, title: 'Next hearing date', icon: 'fa-gavel' }] : []),
             { date: projectedJudgmentDate, title: t('projected_judgment_date_title'), icon: 'fa-calendar-check', isProjected: true },
         ].sort((a,b) => a.date.getTime() - b.date.getTime());
 

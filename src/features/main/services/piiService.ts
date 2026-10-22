@@ -1,5 +1,5 @@
 
-import { Case } from '../types';
+import type { Case } from '../../../types';
 
 // More robust patterns for detecting various types of PII.
 const piiPatterns = {
@@ -19,7 +19,7 @@ export const piiService = {
         let found = false;
 
         // Combine all relevant text fields, including notes, for a comprehensive scan.
-        const textToScan = `${caseData.title} ${caseData.petitioner} ${caseData.respondent} ${caseData.summary} ${caseData.notes || ''}`;
+        const textToScan = `${caseData.complainant} ${caseData.respondent} ${caseData.summary} ${caseData.caseNotes}`;
         
         for (const [type, regex] of Object.entries(piiPatterns)) {
             // Ensure regex state is reset for global flags before matching.
@@ -38,36 +38,25 @@ export const piiService = {
     
     redact: (caseData: Case, piiToRedact: { [key: string]: string }): Case => {
         let redactedSummary = caseData.summary;
-        let redactedTitle = caseData.title;
-        let redactedPetitioner = caseData.petitioner;
+        let redactedComplainant = caseData.complainant;
         let redactedRespondent = caseData.respondent;
-        let redactedNotes = caseData.notes || '';
+        let redactedNotes = caseData.caseNotes;
 
         for (const [original, replacement] of Object.entries(piiToRedact)) {
             // Escape special regex characters from the original string to ensure it's treated as a literal.
             const regex = new RegExp(original.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
             redactedSummary = redactedSummary.replace(regex, replacement);
-            redactedTitle = redactedTitle.replace(regex, replacement);
-            redactedPetitioner = redactedPetitioner.replace(regex, replacement);
+            redactedComplainant = redactedComplainant.replace(regex, replacement);
             redactedRespondent = redactedRespondent.replace(regex, replacement);
-            if(caseData.notes) {
-                redactedNotes = redactedNotes.replace(regex, replacement);
-            }
+            redactedNotes = redactedNotes.replace(regex, replacement);
         }
 
-        const redactedCase: Case = {
+        return {
             ...caseData,
             summary: redactedSummary,
-            title: redactedTitle,
-            petitioner: redactedPetitioner,
-            respondent: redactedRespondent
+            complainant: redactedComplainant,
+            respondent: redactedRespondent,
+            caseNotes: redactedNotes,
         };
-
-        // Only add the notes field back if it was originally present.
-        if (caseData.notes) {
-            redactedCase.notes = redactedNotes;
-        }
-
-        return redactedCase;
     }
 };
