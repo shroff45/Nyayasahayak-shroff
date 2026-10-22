@@ -24,7 +24,7 @@ import { useLocalization, Language } from './features/main/hooks/useLocalization
 import { ChatMessage } from './features/main/types';
 import { ToastProvider } from './shared/hooks/useToast';
 import { WorkspaceProvider, useWorkspace } from './core/context/WorkspaceContext';
-import { toGoldenCase } from './core/workspace/legacyCaseAdapter';
+import { toPresentableGoldenCase } from './core/workspace/legacyCaseAdapter';
 
 // ================== LAZY LOADED LEGACY FEATURES ==================
 // Using React.lazy for code splitting and performance optimization
@@ -126,7 +126,6 @@ const NyayaBotWrapper: React.FC = () => {
 };
 
 const CaseTriageWrapper: React.FC = () => {
-    const { user } = useAuth();
     const [language] = useState<Language>('en');
     const { t } = useLocalization(language);
     // Cases triaged here land in the shared store, so the judge-facing panels can pick them up.
@@ -141,7 +140,6 @@ const CaseTriageWrapper: React.FC = () => {
                 selectedCase={selectedCase}
                 setSelectedCase={setSelectedCase}
                 language={language}
-                currentUser={{ email: user ? `${user.id}@nyaya.gov.in` : 'guest@nyaya.gov.in' }}
                 logActivity={logActivity}
             />
         </React.Suspense>
@@ -253,11 +251,10 @@ const DraftJudgmentWrapper: React.FC = () => {
     const { allCases, selectedCase, setSelectedCase, logActivity } = useWorkspace();
     const [draft, setDraft] = useState('');
 
-    // DraftJudgmentPanel speaks the golden-key Case shape; intake stores the legacy one.
-    // The adapter refuses a record it cannot date (an assumed date could apply the BNS to conduct
-    // that predates it, contrary to Art. 20(1)), and the refusal is shown in place of the panel:
-    // a draft judgment must not carry an applicable law that was guessed at.
-    const goldenResult = selectedCase ? toGoldenCase(selectedCase) : null;
+    // Workspace now persists golden Case records. A migrated record with neither historical date
+    // keeps that absence as `incidentDate: ''`; it must still be refused rather than presented as a
+    // draft judgment carrying an applicable law that was guessed under Article 20(1).
+    const goldenResult = selectedCase ? toPresentableGoldenCase(selectedCase) : null;
     const goldenSelected = goldenResult?.ok ? goldenResult.case : null;
 
     return (
@@ -281,7 +278,7 @@ const DraftJudgmentWrapper: React.FC = () => {
                     </option>
                     {allCases.map((c) => (
                         <option key={c.id} value={c.id}>
-                            {c.caseNumber} · {c.title}
+                            {c.cnrNumber} · {c.summary}
                         </option>
                     ))}
                 </select>

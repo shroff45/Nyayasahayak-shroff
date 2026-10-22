@@ -38,7 +38,15 @@ for (const [name, source] of Object.entries(modules)) {
     );
 }
 
-const { applicableLawFor, toGoldenCase } = await import(path.join(bundleDir, 'adapter.mjs'));
+const {
+    applicableLawFor,
+    toGoldenCase,
+    toPresentableGoldenCase,
+    migrateWorkspaceCases,
+    migrateWorkspaceStorage,
+    WORKSPACE_SCHEMA_KEY,
+    GOLDEN_WORKSPACE_SCHEMA,
+} = await import(path.join(bundleDir, 'adapter.mjs'));
 const { isForensicVideoMandatory, BNS_EFFECTIVE_DATE, validateForensicCompliance } = await import(path.join(bundleDir, 'interlock.mjs'));
 
 let pass = 0;
@@ -131,6 +139,64 @@ test('the model is shown the golden shape, and the three fields it drops are dro
     for (const k of ['title', 'lastHearingDate', 'pii', 'caseNumber', 'petitioner', 'invokedActs', 'notes', 'priority']) {
         assert.ok(!keys.includes(k), `the prompt must not carry ${k}`);
     }
+});
+
+// ---------------------------------------------------------------------- 4(a)-iv(b) / mutable workspace migration
+//
+// The case cache is not evidence: unlike `nyaya:ledger:v1:records`, no digest or signature commits
+// to these bytes. It may therefore change schema in place. These checks pin the exact boundary:
+// migrate every owner-scoped cache before setting the global marker; drop title/pii/userId rather
+// than carrying a redaction table or email into the judge-facing model; preserve an undated record
+// as an absence the presentation boundary refuses, never as a date someone invented.
+test('workspace migration renames the stored fields, drops the orphan fields, and is idempotent', () => {
+    const source = [{ ...legacyCase, pii: { 'Rahul Kumar': '[REDACTED_PERSON]' } }];
+    const once = migrateWorkspaceCases(source);
+    assert.ok(once, 'a valid historical cache must migrate');
+    assert.equal(once.length, 1);
+    const migrated = once[0];
+    assert.equal(migrated.cnrNumber, legacyCase.caseNumber);
+    assert.equal(migrated.complainant, legacyCase.petitioner);
+    assert.deepEqual(migrated.sectionsInvoked, legacyCase.invokedActs);
+    assert.equal(migrated.caseNotes, legacyCase.notes);
+    assert.equal(migrated.incidentDate, legacyCase.filingDate, 'filing date is the documented proxy');
+    assert.equal(migrated.applicableLaw, 'BNS');
+    for (const key of ['caseNumber', 'petitioner', 'invokedActs', 'notes', 'lastHearingDate', 'title', 'pii', 'userId']) {
+        assert.ok(!(key in migrated), `the golden workspace record must not retain ${key}`);
+    }
+    assert.deepEqual(migrateWorkspaceCases(once), once, 'a second pass must produce the same record');
+});
+
+test('the global golden-v1 marker is written only after every user cache migrates, never to the ledger', () => {
+    const values = new Map([
+        ['nyaya:cases:alice', JSON.stringify([legacyCase])],
+        ['nyaya:cases:bob', JSON.stringify([{ ...legacyCase, id: 'C-2', caseNumber: 'CNR/2' }])],
+        ['nyaya:ledger:v1:records', JSON.stringify([{ data: { caseNumber: 'evidence must stay byte-for-byte' } }])],
+    ]);
+    const storage = {
+        get length() { return values.size; },
+        key(index) { return [...values.keys()][index] ?? null; },
+        getItem(key) { return values.get(key) ?? null; },
+        setItem(key, value) { values.set(key, String(value)); },
+    };
+    assert.equal(migrateWorkspaceStorage(storage), true);
+    assert.equal(storage.getItem(WORKSPACE_SCHEMA_KEY), GOLDEN_WORKSPACE_SCHEMA);
+    assert.equal(JSON.parse(storage.getItem('nyaya:cases:alice'))[0].cnrNumber, legacyCase.caseNumber);
+    assert.equal(JSON.parse(storage.getItem('nyaya:cases:bob'))[0].cnrNumber, 'CNR/2');
+    assert.equal(
+        storage.getItem('nyaya:ledger:v1:records'),
+        JSON.stringify([{ data: { caseNumber: 'evidence must stay byte-for-byte' } }]),
+        'the migration must not read or rewrite the journal namespace'
+    );
+    assert.equal(migrateWorkspaceStorage(storage), true, 'the version marker makes the second boot a no-op');
+});
+
+test('a record with neither date is preserved but still refused before presentation', () => {
+    const migrated = migrateWorkspaceCases([{ ...legacyCase, filingDate: '' }]);
+    assert.ok(migrated);
+    assert.equal(migrated[0].incidentDate, '');
+    const result = toPresentableGoldenCase(migrated[0]);
+    assert.equal(result.ok, false, 'the golden shape must not make an unknown date presentable');
+    assert.equal(result.missing, 'incidentDate');
 });
 
 // ------------------------------------------------------------------------ 4(a)-i / the date question

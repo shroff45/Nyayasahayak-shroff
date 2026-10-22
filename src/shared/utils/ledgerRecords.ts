@@ -168,8 +168,14 @@ const sectionListOf = (value: unknown): string[] =>
 
 /**
  * Cases were written in two shapes: the ledger's golden `Case` (`cnrNumber`, `sectionsInvoked`) and
- * the older intake model (`caseNumber`, `invokedActs`, `petitioner`). Both are read; new writes use
- * the golden keys.
+ * the older intake model (`caseNumber`, `invokedActs`, `petitioner`). Both are projected at read
+ * time; new writes use the golden keys.
+ *
+ * This fallback remains after the mutable workspace's golden-v1 migration on purpose. A journal
+ * payload is covered by its leaf digest, predecessor link and sometimes an anchor signature, so
+ * renaming its stored keys would correctly make historical evidence fail verification. The reader
+ * is the schema-evolution boundary: it offers new screens canonical names without claiming old,
+ * signed bytes were ever written that way. Do not "migrate" `nyaya:ledger:v1:records` in place.
  */
 export const readCase = (record: LedgerRecord): LedgerCase | null => {
     const data = asRecord(record.data);

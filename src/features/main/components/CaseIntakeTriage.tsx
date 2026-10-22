@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Case, PredictionResult, User, HistoryItem } from '../types';
+import { PredictionResult, HistoryItem } from '../types';
+import type { Case } from '../../../types';
 import { geminiService } from '../services/geminiService';
 import { piiService } from '../services/piiService';
-import { toGoldenCase } from '../../../core/workspace/legacyCaseAdapter';
+import { applicableLawFor, toPresentableGoldenCase } from '../../../core/workspace/legacyCaseAdapter';
 import Spinner from './common/Spinner';
 import Modal from './common/Modal';
 import { Language, useLocalization } from '../hooks/useLocalization';
@@ -17,11 +18,32 @@ interface CaseIntakeTriageProps {
     selectedCase: Case | null;
     setSelectedCase: (caseData: Case | null) => void;
     language: Language;
-    currentUser: User;
     logActivity: (type: HistoryItem['type'], details: string) => void;
 }
 type CaseTypeFilter = 'All' | Case['caseType'];
-type PriorityFilter = 'All' | 'High' | 'Medium' | 'Low';
+type PriorityFilter = 'All' | Case['urgency'];
+
+/**
+ * The form owns its presentation-only draft. `title` never enters the shared Case record; `pii`
+ * is a local scratch slot for a form integration, never the reversible redaction table persisted by
+ * the old model. The fields passed to `handleCreateCase` are explicitly rebuilt as golden below.
+ */
+type IntakeCaseDraft = {
+    title: string;
+    pii?: Record<string, string>;
+    cnrNumber: string;
+    complainant: string;
+    respondent: string;
+    summary: string;
+    caseType: Case['caseType'];
+    sectionsText: string;
+};
+
+const urgencyLabel: Record<Case['urgency'], string> = {
+    HIGH: 'High',
+    MEDIUM: 'Medium',
+    LOW: 'Low',
+};
 
 const StatCard: React.FC<{ icon: string; value: number; title: string; subtitle: string; color: string; formatNumber: (n: number) => string }> = ({ icon, value, title, subtitle, color, formatNumber }) => (
     <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full group">
@@ -46,70 +68,69 @@ const CaseCard: React.FC<{ caseData: Case; isSelected: boolean; onSelect: () => 
         Divorce: 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-900/30',
         PIL: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30',
     };
-    
+
     return (
-        <div 
-            onClick={onSelect} 
+        <div
+            onClick={onSelect}
             className={`p-4 rounded-xl cursor-pointer transition-all duration-200 border mb-2 ${
-                isSelected 
-                    ? 'bg-white dark:bg-gray-700 border-blue-500 shadow-md ring-1 ring-blue-500/20' 
+                isSelected
+                    ? 'bg-white dark:bg-gray-700 border-blue-500 shadow-md ring-1 ring-blue-500/20'
                     : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 hover:border-gray-300 dark:hover:border-gray-600'
             }`}
         >
             <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-900/50 px-2 py-0.5 rounded">{formatNumber(caseData.caseNumber)}</span>
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${typeColors[caseData.caseType]}`}>
+                <span className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-900/50 px-2 py-0.5 rounded">{formatNumber(caseData.cnrNumber)}</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${typeColors[caseData.caseType] ?? 'text-slate-600 bg-slate-50 border-slate-200'}`}>
                     {caseData.caseType}
                 </span>
             </div>
             <h3 className={`font-semibold text-sm leading-snug mb-3 ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-800 dark:text-gray-200'}`}>
-                {caseData.title}
+                {caseData.summary}
             </h3>
             <div className="flex items-center justify-between mt-auto pt-2 border-t border-gray-50 dark:border-gray-700/50">
                 <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[120px] flex items-center gap-1.5">
-                    <i className="fas fa-user-circle"></i> {caseData.petitioner}
+                    <i className="fas fa-user-circle"></i> {caseData.complainant}
                 </span>
-                {caseData.priority && (
-                    <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        caseData.priority === 'High' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 
-                        caseData.priority === 'Medium' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 
-                        'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
-                    }`}>
-                         <span className={`w-1.5 h-1.5 rounded-full ${
-                            caseData.priority === 'High' ? 'bg-red-500' : 
-                            caseData.priority === 'Medium' ? 'bg-amber-500' : 
-                            'bg-emerald-500'
-                         }`}></span>
-                        {caseData.priority}
-                    </span>
-                )}
+                <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    caseData.urgency === 'HIGH' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' :
+                    caseData.urgency === 'MEDIUM' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' :
+                    'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                }`}>
+                     <span className={`w-1.5 h-1.5 rounded-full ${
+                        caseData.urgency === 'HIGH' ? 'bg-red-500' :
+                        caseData.urgency === 'MEDIUM' ? 'bg-amber-500' : 'bg-emerald-500'
+                     }`}></span>
+                    {urgencyLabel[caseData.urgency]}
+                </span>
             </div>
         </div>
     );
 };
 
-const CreateCaseModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (newCase: Omit<Case, 'id' | 'filingDate' | 'lastHearingDate'>) => void; t: (key: string) => string; }> = ({ isOpen, onClose, onSave, t }) => {
-    const [newCaseData, setNewCaseData] = useState({
+const CreateCaseModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (draft: IntakeCaseDraft) => void; t: (key: string) => string; }> = ({ isOpen, onClose, onSave, t }) => {
+    const [newCaseData, setNewCaseData] = useState<IntakeCaseDraft>({
         title: '',
-        caseNumber: `CR/${Math.floor(Math.random() * 1000)}/${new Date().getFullYear()}`,
-        petitioner: '',
+        cnrNumber: '',
+        complainant: '',
         respondent: '',
         summary: '',
-        caseType: 'Civil' as Case['caseType'],
-        invokedActs: '',
+        caseType: 'Civil',
+        sectionsText: '',
     });
+    const [cnrError, setCnrError] = useState<string | null>(null);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setNewCaseData(prev => ({ ...prev, [name]: value }));
+        if (name === 'cnrNumber') setCnrError(null);
     };
 
     const handleSubmit = () => {
-        const finalCaseData = {
-            ...newCaseData,
-            invokedActs: newCaseData.invokedActs.split(',').map(s => s.trim()).filter(Boolean),
-        };
-        onSave(finalCaseData);
+        if (!newCaseData.cnrNumber.trim()) {
+            setCnrError('Enter the CNR issued to this case. This form will not invent an official-looking case number.');
+            return;
+        }
+        onSave({ ...newCaseData, cnrNumber: newCaseData.cnrNumber.trim() });
         onClose();
     };
 
@@ -119,7 +140,10 @@ const CreateCaseModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: 
         <Modal isOpen={isOpen} onClose={onClose} title={t('create_new_case')}>
             <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                    <input name="caseNumber" value={newCaseData.caseNumber} onChange={handleChange} placeholder={t('case_number')} className={inputClass} />
+                    <div>
+                        <input name="cnrNumber" value={newCaseData.cnrNumber} onChange={handleChange} placeholder="CNR number" className={inputClass} />
+                        {cnrError && <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{cnrError}</p>}
+                    </div>
                     <select name="caseType" value={newCaseData.caseType} onChange={handleChange} className={inputClass}>
                         <option value="Civil">{t('case_type_civil')}</option>
                         <option value="Criminal">{t('case_type_criminal')}</option>
@@ -129,12 +153,13 @@ const CreateCaseModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: 
                     </select>
                 </div>
                 <input name="title" value={newCaseData.title} onChange={handleChange} placeholder={t('case_title')} className={inputClass} />
+                <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">Title is used only while drafting this form; it is not stored with the case record.</p>
                 <div className="grid grid-cols-2 gap-4">
-                    <input name="petitioner" value={newCaseData.petitioner} onChange={handleChange} placeholder={t('petitioner')} className={inputClass} />
+                    <input name="complainant" value={newCaseData.complainant} onChange={handleChange} placeholder={t('petitioner')} className={inputClass} />
                     <input name="respondent" value={newCaseData.respondent} onChange={handleChange} placeholder={t('respondent')} className={inputClass} />
                 </div>
                 <textarea name="summary" value={newCaseData.summary} onChange={handleChange} placeholder={t('case_summary')} className={`${inputClass} resize-none h-32`}></textarea>
-                <input name="invokedActs" value={newCaseData.invokedActs} onChange={handleChange} placeholder={t('acts_involved')} className={inputClass} />
+                <input name="sectionsText" value={newCaseData.sectionsText} onChange={handleChange} placeholder={t('acts_involved')} className={inputClass} />
             </div>
             <div className="mt-6 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
                 <button onClick={onClose} className="px-5 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm font-medium transition-colors">{t('cancel')}</button>
@@ -150,7 +175,7 @@ const PredictionResultDisplay: React.FC<{ prediction: PredictionResult; t: (key:
         Medium: { color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/10', icon: 'fa-exclamation-circle' },
         Low: { color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/10', icon: 'fa-check-circle' },
     };
-    
+
     const config = priorityConfig[prediction.priority];
 
     return (
@@ -165,7 +190,7 @@ const PredictionResultDisplay: React.FC<{ prediction: PredictionResult; t: (key:
                     {prediction.priority} Priority
                 </div>
             </div>
-            
+
             <div className="space-y-5">
                 <div>
                     <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('rationale')}</h4>
@@ -173,7 +198,7 @@ const PredictionResultDisplay: React.FC<{ prediction: PredictionResult; t: (key:
                         {prediction.rationale}
                     </p>
                 </div>
-                
+
                 <div className="grid sm:grid-cols-2 gap-6">
                     <div>
                         <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('contributing_factors')}</h4>
@@ -202,7 +227,7 @@ const PredictionResultDisplay: React.FC<{ prediction: PredictionResult; t: (key:
     );
 };
 
-const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAllCases, selectedCase, setSelectedCase, language, currentUser, logActivity }) => {
+const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAllCases, selectedCase, setSelectedCase, language, logActivity }) => {
     const { formatNumber } = useLocalization(language);
     const [isLoading, setIsLoading] = useState(false);
     const [prediction, setPrediction] = useState<PredictionResult | null>(null);
@@ -217,27 +242,27 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
     const [activeCaseType, setActiveCaseType] = useState<CaseTypeFilter>('All');
     const [activePriority, setActivePriority] = useState<PriorityFilter>('All');
     const [mobileTab, setMobileTab] = useState<'list' | 'details'>('list');
-    
+
     // Notes State
     const [notes, setNotes] = useState('');
 
     useEffect(() => {
         let cases = [...allCases];
         const lowercasedSearch = searchTerm.toLowerCase();
-        
+
         if (activeCaseType !== 'All') {
             cases = cases.filter(c => c.caseType === activeCaseType);
         }
 
         if (activePriority !== 'All') {
-            cases = cases.filter(c => c.priority === activePriority);
+            cases = cases.filter(c => c.urgency === activePriority);
         }
 
         if (searchTerm) {
-            cases = cases.filter(c => 
-                c.title.toLowerCase().includes(lowercasedSearch) ||
-                c.caseNumber.toLowerCase().includes(lowercasedSearch) ||
-                c.petitioner.toLowerCase().includes(lowercasedSearch) ||
+            cases = cases.filter(c =>
+                c.summary.toLowerCase().includes(lowercasedSearch) ||
+                c.cnrNumber.toLowerCase().includes(lowercasedSearch) ||
+                c.complainant.toLowerCase().includes(lowercasedSearch) ||
                 c.respondent.toLowerCase().includes(lowercasedSearch)
             );
         }
@@ -247,7 +272,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
     useEffect(() => {
         if (selectedCase) {
             setPrediction(null);
-            setNotes(selectedCase.notes || '');
+            setNotes(selectedCase.caseNotes);
         }
     }, [selectedCase]);
 
@@ -265,20 +290,18 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
         }
     };
 
-    // The single funnel for both prediction entry points (unredacted from `handlePredict`, redacted from
-    // `handlePiiConfirm`). Store records are the legacy shape, so they cross into golden here - through the
-    // same adapter the judge panels use, not a second ad-hoc field rename. A record with no date is not sent
-    // at all: an outcome prediction is a forecast about a case whose governing criminal code is unknown, and
-    // a guessed date would reach the model as a fact about the law.
+    // The workspace now stores golden records, but an old undated record is preserved as an empty
+    // `incidentDate` by the migration. It remains a refusal at this final boundary: an outcome prediction
+    // cannot be asked to reason from a criminal code selected by an assumed date.
     const proceedWithPrediction = async (caseToProcess: Case) => {
-        const adapted = toGoldenCase(caseToProcess);
-        if (!adapted.ok) {
+        const presentable = toPresentableGoldenCase(caseToProcess);
+        if (!presentable.ok) {
             setPrediction(null);
-            setPredictionBlocked(adapted.reason);
+            setPredictionBlocked(presentable.reason);
             setIsLoading(false);
             return;
         }
-        const result = await geminiService.predictCaseOutcome(adapted.case, language);
+        const result = await geminiService.predictCaseOutcome(presentable.case, language);
         setPrediction(result);
         setIsLoading(false);
     };
@@ -290,18 +313,32 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
         await proceedWithPrediction(redactedCase);
     };
 
-    const handleCreateCase = (newCaseData: Omit<Case, 'id' | 'filingDate' | 'lastHearingDate'>) => {
+    const handleCreateCase = (draft: IntakeCaseDraft) => {
         const today = new Date().toISOString().split('T')[0];
         const newCase: Case = {
-            ...newCaseData,
-            id: new Date().toISOString() + Math.random(),
+            id: crypto.randomUUID(),
+            cnrNumber: draft.cnrNumber,
+            complainant: draft.complainant,
+            respondent: draft.respondent,
+            caseType: draft.caseType,
+            summary: draft.summary,
+            caseNotes: '',
             filingDate: today,
-            lastHearingDate: today,
-            userId: currentUser.email
+            status: 'FILED',
+            urgency: 'MEDIUM',
+            sectionsInvoked: draft.sectionsText.split(',').map(section => section.trim()).filter(Boolean),
+            adjournmentsCount: 0,
+            // Intake does not yet collect an incident date (Block 3 debt); keep the documented
+            // filing-date proxy rather than inventing a different source at migration time.
+            incidentDate: today,
+            isZeroFir: false,
+            applicableLaw: applicableLawFor(today),
         };
         setAllCases(prev => [newCase, ...prev]);
         setSelectedCase(newCase);
-        logActivity('CASE_CREATED', t('history_case_created').replace('{title}', newCase.title));
+        // `draft.title` stays in the form only. In particular, it does not leak into the persisted
+        // history sentence as a second, hidden way to retain a field removed from the case schema.
+        logActivity('CASE_CREATED', `Case ${newCase.cnrNumber} created.`);
     };
 
     const handleCaseSelect = (caseData: Case) => {
@@ -312,15 +349,15 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
 
     const handleSaveNotes = () => {
         if (!selectedCase) return;
-        const updatedCases = allCases.map(c => 
-            c.id === selectedCase.id ? { ...c, notes } : c
+        const updatedCases = allCases.map(c =>
+            c.id === selectedCase.id ? { ...c, caseNotes: notes } : c
         );
         setAllCases(updatedCases);
-        // Update current selected object too
-        setSelectedCase({ ...selectedCase, notes });
+        // Update current selected object too.
+        setSelectedCase({ ...selectedCase, caseNotes: notes });
         alert('Notes saved successfully.'); // Simple feedback
     };
-    
+
     // Calculate counts based on mutual filtering (Case Type <-> Priority)
     const caseTypeFilters: { label: string; type: CaseTypeFilter; count: number }[] = [
         { label: 'All', type: 'All' },
@@ -332,28 +369,28 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
     ].map(f => ({
         label: f.label,
         type: f.type as CaseTypeFilter,
-        count: allCases.filter(c => 
-            (f.type === 'All' || c.caseType === f.type) && 
-            (activePriority === 'All' || c.priority === activePriority)
+        count: allCases.filter(c =>
+            (f.type === 'All' || c.caseType === f.type) &&
+            (activePriority === 'All' || c.urgency === activePriority)
         ).length
     }));
 
     const priorityFilters: { label: string; type: PriorityFilter; count: number; color: string }[] = [
         { label: 'All', type: 'All', count: 0, color: 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300' },
-        { label: 'High', type: 'High', count: 0, color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300' },
-        { label: 'Medium', type: 'Medium', count: 0, color: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300' },
-        { label: 'Low', type: 'Low', count: 0, color: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300' },
+        { label: 'High', type: 'HIGH', count: 0, color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300' },
+        { label: 'Medium', type: 'MEDIUM', count: 0, color: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300' },
+        { label: 'Low', type: 'LOW', count: 0, color: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300' },
     ].map(f => ({
         label: f.label,
         type: f.type as PriorityFilter,
         color: f.color,
-        count: allCases.filter(c => 
-            (activeCaseType === 'All' || c.caseType === activeCaseType) && 
-            (f.type === 'All' || c.priority === f.type)
+        count: allCases.filter(c =>
+            (activeCaseType === 'All' || c.caseType === activeCaseType) &&
+            (f.type === 'All' || c.urgency === f.type)
         ).length
     }));
 
-    
+
     return (
         <AnimatedPageWrapper>
         <div className="flex flex-col h-full space-y-4 max-w-full mx-auto">
@@ -379,7 +416,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                             placeholder={t('search_by_title_number')}
                         />
                         {searchTerm && (
-                            <button 
+                            <button
                                 onClick={() => setSearchTerm('')}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                             >
@@ -387,7 +424,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                             </button>
                         )}
                     </div>
-                    
+
                     <div className="flex flex-col gap-3">
                         {/* Case Type Filters */}
                         <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
@@ -396,8 +433,8 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                     key={filter.type}
                                     onClick={() => setActiveCaseType(filter.type)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border ${
-                                        activeCaseType === filter.type 
-                                        ? 'bg-blue-600 text-white border-blue-500 shadow-sm' 
+                                        activeCaseType === filter.type
+                                        ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                                         : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                                     }`}
                                 >
@@ -405,7 +442,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                 </button>
                             ))}
                         </div>
-                        
+
                         {/* Priority Filters */}
                         <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 border-b border-gray-100 dark:border-gray-700/50 mb-1">
                             {priorityFilters.map(filter => (
@@ -413,7 +450,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                     key={filter.type}
                                     onClick={() => setActivePriority(filter.type)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border ${
-                                        activePriority === filter.type 
+                                        activePriority === filter.type
                                         ? `ring-1 ring-blue-400 dark:ring-white ${filter.color} shadow-sm`
                                         : `${filter.color} opacity-70 hover:opacity-100 hover:bg-opacity-70`
                                     }`}
@@ -432,7 +469,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                     </div>
                     <div className="flex-grow overflow-y-auto custom-scrollbar pr-1">
                         {filteredCases.length > 0 ? filteredCases.map(caseData => (
-                            <CaseCard 
+                            <CaseCard
                                 key={caseData.id}
                                 caseData={caseData}
                                 isSelected={selectedCase?.id === caseData.id}
@@ -454,17 +491,17 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                     <i className="fas fa-arrow-left"></i> Back to List
                                 </button>
                             </div>
-                            
+
                             {/* Header Banner */}
                             <div className="p-8 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-white dark:from-gray-800 dark:to-gray-800/50">
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <div className="flex items-center gap-3 mb-3">
                                             <span className="px-2.5 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-300 dark:border-gray-600">
-                                                {formatNumber(selectedCase.caseNumber)}
+                                                {formatNumber(selectedCase.cnrNumber)}
                                             </span>
                                         </div>
-                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white leading-tight mb-2">{selectedCase.title}</h2>
+                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white leading-tight mb-2">{selectedCase.summary}</h2>
                                     </div>
                                     <button
                                         onClick={handlePredict}
@@ -483,7 +520,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 p-5 bg-gray-50 dark:bg-gray-700/30 rounded-2xl border border-gray-100 dark:border-gray-700/50">
                                     <div>
                                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{t('petitioner')}</p>
-                                        <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 truncate">{selectedCase.petitioner}</p>
+                                        <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 truncate">{selectedCase.complainant}</p>
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{t('respondent')}</p>
@@ -494,8 +531,8 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                         <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 font-mono">{formatNumber(selectedCase.filingDate)}</p>
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{t('last_hearing')}</p>
-                                        <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 font-mono">{formatNumber(selectedCase.lastHearingDate)}</p>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Next hearing</p>
+                                        <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 font-mono">{formatNumber(selectedCase.nextHearingDate ?? 'not recorded')}</p>
                                     </div>
                                 </div>
 
@@ -513,14 +550,14 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                         <i className="fas fa-gavel text-gray-400"></i> {t('invoked_acts')}
                                     </h3>
                                     <div className="flex flex-wrap gap-2.5">
-                                        {selectedCase.invokedActs.map(act => (
+                                        {selectedCase.sectionsInvoked.map(act => (
                                             <span key={act} className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-600">
                                                 {formatNumber(act)}
                                             </span>
                                         ))}
                                     </div>
                                 </div>
-                                
+
                                 {/* Case Notes Section */}
                                 <div>
                                     <div className="flex justify-between items-end mb-3">
@@ -531,7 +568,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                             <i className="fas fa-save mr-1"></i> {t('save_notes')}
                                         </button>
                                     </div>
-                                    <textarea 
+                                    <textarea
                                         value={notes}
                                         onChange={(e) => setNotes(e.target.value)}
                                         className="w-full h-32 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none placeholder-gray-400 transition-all"
