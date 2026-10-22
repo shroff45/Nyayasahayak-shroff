@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Case, PredictionResult, User, HistoryItem } from '../types';
 import { geminiService } from '../services/geminiService';
 import { piiService } from '../services/piiService';
+import { toGoldenCase } from '../../../core/workspace/legacyCaseAdapter';
 import Spinner from './common/Spinner';
 import Modal from './common/Modal';
 import { Language, useLocalization } from '../hooks/useLocalization';
@@ -205,6 +206,9 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
     const { formatNumber } = useLocalization(language);
     const [isLoading, setIsLoading] = useState(false);
     const [prediction, setPrediction] = useState<PredictionResult | null>(null);
+    // The adapter refuses a record it cannot date; that refusal is shown, never swallowed into a null
+    // sitting next to a spinner that stopped.
+    const [predictionBlocked, setPredictionBlocked] = useState<string | null>(null);
     const [isPiiModalOpen, setIsPiiModalOpen] = useState(false);
     const [detectedPii, setDetectedPii] = useState<{ [key: string]: string }>({});
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -251,6 +255,7 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
         if (!selectedCase) return;
         setIsLoading(true);
         setPrediction(null);
+        setPredictionBlocked(null);
         const piiResult = piiService.scan(selectedCase);
         if (piiResult.found && Object.keys(piiResult.pii).length > 0) {
             setDetectedPii(piiResult.pii);
@@ -260,8 +265,20 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
         }
     };
 
+    // The single funnel for both prediction entry points (unredacted from `handlePredict`, redacted from
+    // `handlePiiConfirm`). Store records are the legacy shape, so they cross into golden here - through the
+    // same adapter the judge panels use, not a second ad-hoc field rename. A record with no date is not sent
+    // at all: an outcome prediction is a forecast about a case whose governing criminal code is unknown, and
+    // a guessed date would reach the model as a fact about the law.
     const proceedWithPrediction = async (caseToProcess: Case) => {
-        const result = await geminiService.predictCaseOutcome(caseToProcess, language);
+        const adapted = toGoldenCase(caseToProcess);
+        if (!adapted.ok) {
+            setPrediction(null);
+            setPredictionBlocked(adapted.reason);
+            setIsLoading(false);
+            return;
+        }
+        const result = await geminiService.predictCaseOutcome(adapted.case, language);
         setPrediction(result);
         setIsLoading(false);
     };
@@ -523,6 +540,12 @@ const CaseIntakeTriage: React.FC<CaseIntakeTriageProps> = ({ t, allCases, setAll
                                 </div>
 
                                 {prediction && !isLoading && <PredictionResultDisplay prediction={prediction} t={t} />}
+                                {predictionBlocked && !isLoading && (
+                                    <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+                                        <p className="font-bold text-amber-300">No prediction generated for this case.</p>
+                                        <p className="mt-1 text-slate-300">{predictionBlocked}</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (

@@ -137,7 +137,7 @@ npm run typecheck             # tsc over the app and over the e2e project; 0 err
 npm test                      # 63 node tests (trust primitives, ledger, custody, the s.63
                               # certificate, the intake's round trip through the real façade, the
                               # session signature) + 14 statutory tests over the commencement dates
-node tools/ledger_repro.cjs   # 32 claims this repository makes about itself; non-zero exit if a
+node tools/ledger_repro.cjs   # 33 claims this repository makes about itself; non-zero exit if a
                               # sentence in the app stops matching its code
 npm run build                 # then tools/check_bundle_size.mjs: every asset under 660,000 bytes
                               # on disk (and under 600 kB in vite's printed units, which count

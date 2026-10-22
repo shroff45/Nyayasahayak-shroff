@@ -1,6 +1,12 @@
 
 import React, { useEffect, useRef } from 'react';
-import { Case } from '../types';
+// 4(a)-ii-a: this screen speaks the golden-key model, not the legacy intake one. Its field reads are
+// `cnrNumber` / `complainant` / `sectionsInvoked` / `respondent`, which is what the judge-facing panels
+// already call the same four facts, so a case shown here and a case shown in the draft-judgment panel
+// cannot drift apart. The mount in `App.tsx` still passes a literal `null` (D38), so this type is today
+// satisfied by nothing but a null - the retype is deliberate groundwork for wiring it through
+// `toGoldenCase` in -iv, and an empty state (not a compiler error) is what hides D38.
+import type { Case } from '../../../types';
 import { gsap } from 'gsap';
 import AnimatedPageWrapper from './common/AnimatedPageWrapper';
 
@@ -87,11 +93,11 @@ const CaseRelationshipMapper: React.FC<CaseRelationshipMapperProps> = ({ t, sele
         }
 
         const nodes = {
-            case: { x: 50, y: 50, label: selectedCase.caseNumber, type: 'case' as const },
-            petitioner: { x: 20, y: 30, label: selectedCase.petitioner, type: 'person' as const },
+            case: { x: 50, y: 50, label: selectedCase.cnrNumber, type: 'case' as const },
+            petitioner: { x: 20, y: 30, label: selectedCase.complainant, type: 'person' as const },
             respondent: { x: 80, y: 30, label: selectedCase.respondent, type: 'person' as const },
-            act1: selectedCase.invokedActs[0] ? { x: 30, y: 75, label: selectedCase.invokedActs[0], type: 'act' as const } : null,
-            act2: selectedCase.invokedActs[1] ? { x: 70, y: 75, label: selectedCase.invokedActs[1], type: 'act' as const } : null,
+            act1: selectedCase.sectionsInvoked[0] ? { x: 30, y: 75, label: selectedCase.sectionsInvoked[0], type: 'act' as const } : null,
+            act2: selectedCase.sectionsInvoked[1] ? { x: 70, y: 75, label: selectedCase.sectionsInvoked[1], type: 'act' as const } : null,
         };
 
         return (
