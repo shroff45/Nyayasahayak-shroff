@@ -68,6 +68,8 @@ And after D28 (PR #9), same command:
 | after 4(a)-iii | 141 files (37,946 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — the 9-file `src/core/types.ts` closure plus golden `AdjournmentRisk` (8 lines of `src/types.ts`). 693 resolver-lines removed (684 by `wc -l`: the resolver counts +1 per file, so the two totals differ by exactly the file count). `reachable` unmoved at 121, which is the signature §6.3 predicted for a purge that touches nothing live. |
 | after 4(a)-i | 141 files (38,022 lines) / 121 reachable / 20 unreachable (2,848 lines, 7.5 %) — +76 lines in `src/` and no file count moved: -i changed three files' bodies (`legacyCaseAdapter.ts` +49/-6, `ChargeSheetGatePage.tsx`, `App.tsx`) and two gate files (`statute_tests.mjs` 14→18 tests, `ledger_repro.cjs` claim 32). Entry chunk 624,410 B → 625,108 B (+698 B of refusal copy), 34.89 kB under the D35 ratchet. |
 | after 4(a)-ii-b + D39 | 141 files (37,731 lines) / 121 reachable / 20 unreachable — −291 lines. `src/features/main/types.ts`: module importers 12 → 11, `Case` namers 8 → 7 (mockData no longer names the legacy model at all). Total JS 2,497,924 → 2,497,361 B (−563 B) across 92 chunks: the fixture block had been tree-shaken out of the bundle long ago, so this commit's win is in the source model, not the payload. |
+| after 4(a)-ii-a (achievable half) | 141 files (37,774 lines) / 121 reachable / 20 unreachable — `CaseRelationshipMapper` is golden and `geminiService` receives golden data through a refusal-handling boundary. Module importers 11 → 10; the resolver's cross-module *file* census says `Case` namers 7 → **6**, not the predicted 5: `geminiService` names golden `Case` but still imports three non-case types from the legacy module, so the module remains live. |
+| after 4(a)-iv(a) | 141 files (37,857 lines) / 121 reachable / 20 unreachable — a `GateCaseRow` union makes every undated charge-sheet case an explicit disabled row; `LedgerEntry.data` is `unknown`, so a journal payload must be narrowed before a screen reads it. No persistence key changed in this commit. |
 
 All three blocks stay: the first is the baseline this plan was written against, and quietly restating
 history as the current number is how a plan stops being falsifiable. One caution while reading them:
@@ -573,3 +575,43 @@ the only remaining fabricated numbers in that file are four `<StatCard value={3|
 caseload heading (`:345-348`), formatted by the real locale helper so they look measured, while `allCases` sits in
 the same scope uncounted. Claim 30 cannot see them because no titled person stands beside them — which is the
 *shape* of the missing rule, and it is registered rather than fixed.
+
+
+### 6.10 4(a)-ii-a, executed — two files changed shape; the census corrected the promise
+
+The achievable two-file half shipped after the store ruling, not the old three-file/8→5 plan.
+`CaseRelationshipMapper` now reads the golden names (`cnrNumber`, `complainant`,
+`sectionsInvoked`, `respondent`) and remains mounted with its honest `null` empty state; D38 was not
+quietly wired. `geminiService` now serialises the golden record into its model prompt. This deliberately
+changes the prompt contract from `caseNumber`/`petitioner`/`invokedActs` to
+`cnrNumber`/`complainant`/`sectionsInvoked`, and stops sending `title` (UI chrome), `lastHearingDate`
+(scheduling state), and `pii` (the map that would reverse redaction). `CaseIntakeTriage` converts at
+the call site and renders the adapter's refusal; it does not send an undated case for a prediction.
+The golden prompt keys are pinned in the statute suite.
+
+The measurement was **7→6, not 7→5**. The resolver counts a *file* that imports the legacy module and
+names `Case` anywhere, even if that particular `Case` comes from the golden module. `geminiService`
+still imports `PredictionResult`, `DocumentAnalysisResult`, and `ChatMessage` from the legacy module,
+so it still appears in the module census. That is not an excuse to publish a prettier number: it is the
+reason -iv(c) must relocate those three types before the legacy module can die.
+
+### 6.11 4(a)-iv(a), executed — the gate refuses in its own list, and journal JSON is unknown
+
+The charge-sheet page's old `{ cases, gateExclusions }` parallel arrays became one
+`GateCaseRow` union: `{ kind: 'gatable', caseData }` or
+`{ kind: 'excluded', caseData, exclusion }`. The exclusion remains counted aloud, but it is also a
+visible greyed `aria-disabled` row with its reason and no link to the statutory gate. A direct URL to
+such a row shows the same refusal and does not manufacture a `LedgerCase` just to let the page continue.
+This is the requested Q2 fold: the denominator and the disabled rendering come from one memo, so a
+future edit cannot remove one while leaving the other saying it exists.
+
+`LedgerEntry.data` is now `unknown`; `HashVerifier` narrows it to a record before looking for the
+three recognised digest keys. This closes the type hole that let an arbitrary persisted payload be
+passed as a case without a validation boundary. It changes no ledger record and no storage key.
+
+The ledger migration ruling is explicit for the commits that follow: `nyaya:ledger:v1:records` is
+immutable evidence — payload bytes are committed by leaf digests, links and anchors — so historical
+entries stay in their original shape and `readCase` projects both old and golden keys on read. Only the
+mutable `nyaya:cases:<owner>` workspace will migrate in -iv(b), with a `golden-v1` version marker;
+new workspace writes will be golden. Appending synthetic replacement records would be a device-signed
+assertion about past data, not a migration, and direct rewriting would correctly fail verification.

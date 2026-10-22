@@ -17,9 +17,14 @@ import { LedgerEntry } from '../../../types';
  * screen wrote it, so the comparison checks each - case-insensitively, because hex digests
  * arrive upper-cased from lab reports and lower-cased from browsers.
  */
+const recordData = (value: unknown): Record<string, unknown> =>
+    typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
+
 const entryCommitsToDigest = (entry: LedgerEntry, digest: string): boolean => {
     const target = digest.trim().toLowerCase();
-    const data = (entry.data ?? {}) as Record<string, unknown>;
+    // `LedgerEntry.data` is persisted JSON, not a Case or an exhibit until this screen has checked
+    // it. A non-object record simply carries none of the recognised digest fields.
+    const data = recordData(entry.data);
     const candidates: unknown[] = [data.hash, data.sha256, data.leafDigest];
     if (typeof data.caseNotes === 'string') {
         try {

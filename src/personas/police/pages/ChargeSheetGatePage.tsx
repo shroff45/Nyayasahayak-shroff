@@ -33,6 +33,18 @@ import type { ForensicVideoMetadata, ForensicVisitToken, OverrideReason } from '
 
 type OverrideShape = NonNullable<import('../../../types/forensic.types').ForensicCompliance['override']>;
 
+type GateExclusion = { id: string; label: string; reason: string };
+
+/**
+ * The charge-sheet list is not a `LedgerCase[]`: a row can be a genuine record the interlock may
+ * evaluate, or a case the adapter refused because its governing code cannot be determined. The
+ * second state remains a row on purpose. A side list of exclusions was auditable but easy to miss;
+ * a disabled row keeps the denominator and the reason beside the case it belongs to.
+ */
+type GateCaseRow =
+    | { kind: 'gatable'; caseData: LedgerCase }
+    | { kind: 'excluded'; caseData: LedgerCase; exclusion: GateExclusion };
+
 const REASONS: { value: OverrideReason; label: string }[] = [
     { value: 'FORENSIC_TEAM_UNAVAILABLE', label: 'Forensic team not available' },
     { value: 'TECHNICAL_FAILURE', label: 'Equipment or technical failure' },
@@ -82,32 +94,57 @@ const ChargeSheetGatePage: React.FC = () => {
 
     useEffect(() => { void load(); }, [load]);
 
-    // Cases in the journal first; the intake workspace fills the gaps, adapted to the same keys so
-    // one screen can read both without the split-brain the ledger was built to remove.
-    // `toGoldenCase` returns a result, not a Case (see the adapter's header), so a record this app
-    // cannot date is *named* here rather than dropped: the list below shows the cases the interlock
-    // can evaluate, and the line under it counts the ones it cannot. Hiding them entirely would
-    // shrink the gate's denominator silently, which is the same class of defect the refusal exists to
-    // stop. Both halves come out of one memo, so the pair cannot drift apart.
-    const { cases, gateExclusions } = useMemo(() => {
+    // Cases in the journal first; the intake workspace fills the gaps. Historical journal payloads
+    // are projected by `readCase` (not rewritten — their signed bytes are evidence); the mutable
+    // workspace is still legacy at this point in the sequence, so it crosses the one adapter here.
+    // Both paths end in the same union view model. An undated record is a disabled row, rather than
+    // being dropped from the denominator or made into a Link that lets the user try the gate anyway.
+    const { caseRows, gateExclusions } = useMemo(() => {
+        const exclusionFor = (entry: LedgerCase, reason: string): GateExclusion => ({
+            id: entry.id,
+            label: `${entry.cnrNumber || entry.id}${entry.complainant ? ` · ${entry.complainant}` : ''}`,
+            reason,
+        });
+        const rowForLedgerCase = (entry: LedgerCase): GateCaseRow => {
+            if (entry.incidentDate || entry.filingDate) return { kind: 'gatable', caseData: entry };
+            const exclusion = exclusionFor(
+                entry,
+                'No incident or filing date is recorded, so this app will not decide whether the BNS or the IPC applies.'
+            );
+            return { kind: 'excluded', caseData: entry, exclusion };
+        };
+
         const fromLedger = listCases(records);
         const seen = new Set(fromLedger.map((entry) => entry.id));
-        const fromWorkspace: LedgerCase[] = [];
-        const excluded: { id: string; label: string; reason: string }[] = [];
+        const fromWorkspace: GateCaseRow[] = [];
         for (const entry of allCases) {
             if (seen.has(entry.id)) continue;
             const result = toGoldenCase(entry);
             if (!result.ok) {
-                excluded.push({
+                const caseData: LedgerCase = {
                     id: entry.id,
-                    label: `${entry.caseNumber || entry.id}${entry.title ? ` · ${entry.title}` : ''}`,
-                    reason: result.reason,
+                    cnrNumber: entry.caseNumber,
+                    complainant: entry.petitioner,
+                    respondent: entry.respondent,
+                    caseType: entry.caseType,
+                    summary: entry.summary,
+                    filingDate: entry.filingDate,
+                    sectionsInvoked: entry.invokedActs ?? [],
+                    recordIndex: -1,
+                    loggedAt: entry.filingDate,
+                    raw: {},
+                };
+                fromWorkspace.push({
+                    kind: 'excluded',
+                    caseData,
+                    exclusion: exclusionFor(caseData, result.reason),
                 });
                 continue;
             }
             const golden = result.case;
             fromWorkspace.push({
-                    
+                kind: 'gatable',
+                caseData: {
                     id: golden.id,
                     cnrNumber: golden.cnrNumber,
                     complainant: golden.complainant,
@@ -123,21 +160,32 @@ const ChargeSheetGatePage: React.FC = () => {
                     recordIndex: -1,
                     loggedAt: golden.filingDate,
                     raw: {},
+                },
             });
         }
-        return { cases: [...fromLedger, ...fromWorkspace], gateExclusions: excluded };
+        const rows = [...fromLedger.map(rowForLedgerCase), ...fromWorkspace];
+        return {
+            caseRows: rows,
+            gateExclusions: rows.flatMap((row) => row.kind === 'excluded' ? [row.exclusion] : []),
+        };
     }, [records, allCases]);
+
+    const requestedRow = useMemo(
+        () => caseId ? caseRows.find((row) => row.caseData.id === caseId || row.caseData.cnrNumber === caseId) ?? null : null,
+        [caseId, caseRows]
+    );
 
     const kase = useMemo(() => {
         if (caseId) {
-            return cases.find((entry) => entry.id === caseId || entry.cnrNumber === caseId)
-                ?? {
-                    id: caseId, sectionsInvoked: [], recordIndex: -1, loggedAt: '', raw: {},
-                };
+            return requestedRow?.kind === 'gatable'
+                ? requestedRow.caseData
+                : requestedRow
+                    ? null
+                    : { id: caseId, sectionsInvoked: [], recordIndex: -1, loggedAt: '', raw: {} };
         }
         const fallback = selectedCase ? listCases(records).find((e) => e.id === selectedCase.id) ?? null : null;
         return fallback;
-    }, [caseId, cases, selectedCase, records]);
+    }, [caseId, requestedRow, selectedCase, records]);
 
     const exhibits = useMemo<LedgerExhibit[]>(
         () => (kase ? exhibitsForCase(records, kase.id) : []),
@@ -403,32 +451,56 @@ const ChargeSheetGatePage: React.FC = () => {
                             </span>
                         </p>
                     )}
-                    {cases.length === 0 ? (
+                    {caseRows.length === 0 ? (
                         <p className="text-sm text-slate-400">
                             No case has been recorded. File the FIR first — the interlock decides
                             whether s.176(3) applies from the sections and the date on the case record.
                         </p>
                     ) : (
                         <div className="space-y-2">
-                            {cases.map((entry) => (
+                            {caseRows.map((row) => row.kind === 'gatable' ? (
                                 <Link
-                                    key={`${entry.id}-${entry.recordIndex}`}
-                                    to={`/police/chargesheet/${encodeURIComponent(entry.id)}/gate`}
+                                    key={`${row.caseData.id}-${row.caseData.recordIndex}`}
+                                    to={`/police/chargesheet/${encodeURIComponent(row.caseData.id)}/gate`}
                                     className="flex items-center justify-between p-3 bg-slate-800/50 border border-slate-700 hover:border-blue-500 rounded-lg text-sm"
                                 >
                                     <span className="min-w-0">
-                                        <span className="block truncate font-medium">{entry.id}</span>
+                                        <span className="block truncate font-medium">{row.caseData.id}</span>
                                         <span className="block text-xs text-slate-400 truncate">
-                                            {entry.cnrNumber ?? 'no CNR'} · {(entry.sectionsInvoked.join(', ') || 'no sections recorded')}
+                                            {row.caseData.cnrNumber ?? 'no CNR'} · {(row.caseData.sectionsInvoked.join(', ') || 'no sections recorded')}
                                         </span>
                                     </span>
                                     <span className="text-xs text-slate-500 shrink-0 ml-3">
-                                        {entry.incidentDate ? `incident ${entry.incidentDate.slice(0, 10)}` : ''}
+                                        {row.caseData.incidentDate ? `incident ${row.caseData.incidentDate.slice(0, 10)}` : ''}
                                     </span>
                                 </Link>
+                            ) : (
+                                <div
+                                    key={`${row.caseData.id}-${row.caseData.recordIndex}`}
+                                    role="status"
+                                    aria-disabled="true"
+                                    className="flex items-center justify-between p-3 bg-slate-900/40 border border-amber-500/30 rounded-lg text-sm opacity-70 cursor-not-allowed"
+                                >
+                                    <span className="min-w-0">
+                                        <span className="block truncate font-medium text-slate-300">{row.caseData.id}</span>
+                                        <span className="block text-xs text-slate-500 truncate">
+                                            {row.caseData.cnrNumber ?? 'no CNR'} · {(row.caseData.sectionsInvoked.join(', ') || 'no sections recorded')}
+                                        </span>
+                                    </span>
+                                    <span className="max-w-sm text-right text-xs text-amber-300 shrink-0 ml-3">
+                                        Cannot open gate: {row.exclusion.reason}
+                                    </span>
+                                </div>
                             ))}
                         </div>
                     )}
+                </div>
+            )}
+
+            {requestedRow?.kind === 'excluded' && (
+                <div role="alert" className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+                    <p className="font-bold text-amber-300">This case cannot open the charge-sheet gate.</p>
+                    <p className="mt-1 text-slate-300">{requestedRow.exclusion.reason}</p>
                 </div>
             )}
 

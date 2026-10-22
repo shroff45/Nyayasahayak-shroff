@@ -43,7 +43,13 @@ export interface VisualCard {
 export interface LedgerEntry {
     index: number;
     timestamp: string;
-    data: any;
+    /**
+     * The journal deliberately persists open-ended JSON. Screens must narrow it before reading a
+     * property: declaring this `any` used to make a stored payload silently assignable to `Case`,
+     * bypassing the date/applicable-law boundary. `unknown` forces every reader to say which shape
+     * it actually accepts instead of borrowing trust from TypeScript's escape hatch.
+     */
+    data: unknown;
     hash: string;
     previousHash: string;
     merkleRoot: string;
